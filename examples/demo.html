@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>formflow demo</title>
+<link rel="stylesheet" href="../engine/formflow.css">
+<style>body { background: #fafafa; }</style>
+</head>
+<body>
+<div id="app"></div>
+<script src="../engine/formflow.js"></script>
+<script>
+var schema = {
+  title: "Bethel List Verification — demo",
+  steps: [
+    { id: "info", type: "info", question: "Verify your congregation's pioneers",
+      subtext: "One question per pioneer. Tap Skip if you need to check with someone else first." },
+    { id: "p1", type: "choice", question: "Is {{name1}} attending PSS (Nov 9-14, Dumaguete)?",
+      options: [
+        { value: "attending", label: "Yes, attending" },
+        { value: "not_attending", label: "Not attending" },
+        { value: "already_had_pss", label: "Already had PSS since 2021" },
+        { value: "not_qualified", label: "Not qualified" },
+        { value: "not_sure", label: "Not sure — flag for CO" },
+      ],
+      followUp: { showWhen: ["not_attending", "not_sure", "not_qualified"], question: "Add a note (optional)" },
+      skippable: true },
+    { id: "p2", type: "choice", question: "Is {{name2}} attending PSS (Nov 9-14, Dumaguete)?",
+      options: [
+        { value: "attending", label: "Yes, attending" },
+        { value: "not_attending", label: "Not attending" },
+        { value: "already_had_pss", label: "Already had PSS since 2021" },
+        { value: "not_qualified", label: "Not qualified" },
+        { value: "not_sure", label: "Not sure — flag for CO" },
+      ],
+      followUp: { showWhen: ["not_attending", "not_sure", "not_qualified"], question: "Add a note (optional)" },
+      initialValue: "attending",
+      skippable: true },
+    { id: "add", type: "repeat-group", question: "Anyone we missed?",
+      addLabel: "+ Add a pioneer",
+      fields: [
+        { id: "name", label: "Name", required: true },
+        { id: "contact", label: "Contact info" },
+        { id: "notes", label: "Notes", type: "textarea" },
+      ] },
+    { id: "done", type: "info", question: "Thank you!", subtext: "Your answers are saved." },
+  ],
+};
+
+Formflow.mount(document.getElementById('app'), schema, {
+  tokens: { name1: "Jane Doe", name2: "John Smith" },
+  onAnswer: function (stepId, value, note) {
+    console.log('answered', stepId, value, note);
+  },
+  onComplete: function (answers) {
+    console.log('complete', answers);
+  },
+});
+</script>
+</body>
+</html>
