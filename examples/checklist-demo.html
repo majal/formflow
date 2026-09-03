@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>formflow checklist demo</title>
+<link rel="stylesheet" href="../engine/formflow.css">
+</head>
+<body>
+<div id="app"></div>
+<script src="../engine/formflow.js"></script>
+<script>
+var schema = {
+  title: "Bethel List Verification — demo",
+  steps: [
+    { id: "info", type: "info", question: "Verify your congregation's pioneers",
+      subtext: "Tap any name to answer. Come back any time." },
+    { id: "p1", type: "choice", question: "Jane Doe",
+      options: [
+        { value: "attending", label: "Attending Nov 2026", colorKey: "positive", emoji: "✅" },
+        { value: "attend2027", label: "Attending 2027 instead", colorKey: "info", emoji: "📅" },
+        { value: "not_qualified", label: "Not qualified", colorKey: "neutral", emoji: "⏳" },
+        { value: "other", label: "Other reason", colorKey: "attention", emoji: "❓" },
+      ],
+      followUp: { showWhen: ["other"], question: "Add a note" } },
+    { id: "p2", type: "choice", question: "John Smith",
+      options: [
+        { value: "attending", label: "Attending Nov 2026", colorKey: "positive", emoji: "✅" },
+        { value: "attend2027", label: "Attending 2027 instead", colorKey: "info", emoji: "📅" },
+        { value: "not_qualified", label: "Not qualified", colorKey: "neutral", emoji: "⏳" },
+        { value: "other", label: "Other reason", colorKey: "attention", emoji: "❓" },
+      ],
+      initialValue: "attending" },
+    { id: "p3", type: "choice", question: "Maria Cruz",
+      options: [
+        { value: "attending", label: "Attending Nov 2026", colorKey: "positive", emoji: "✅" },
+        { value: "attend2027", label: "Attending 2027 instead", colorKey: "info", emoji: "📅" },
+        { value: "not_qualified", label: "Not qualified", colorKey: "neutral", emoji: "⏳" },
+        { value: "other", label: "Other reason", colorKey: "attention", emoji: "❓" },
+      ] },
+    { id: "add", type: "repeat-group", question: "Anyone we missed?",
+      addLabel: "+ Add a pioneer",
+      fields: [
+        { id: "name", label: "Name", required: true },
+        { id: "notes", label: "Notes", type: "textarea" },
+      ] },
+  ],
+};
+
+Formflow.mountChecklist(document.getElementById('app'), schema, {
+  onAnswer: function (stepId, value, note) { console.log('answered', stepId, value, note); },
+});
+</script>
+</body>
+</html>
