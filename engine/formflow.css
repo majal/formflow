@@ -38,6 +38,20 @@
   --ff-status-unanswered-bg: transparent;
   --ff-status-unanswered-border: #d8d8d8;
   --ff-status-unanswered-text: #9a9a9a;
+
+  /* "Whisper" tints -- a much softer version of each status color, shown
+     on an option BEFORE it's selected. The point is quick visual
+     grouping (this option reads as "still fine", that one as "needs a
+     look") without shouting; selecting an option steps up to the full
+     -bg/-border/-text set above. */
+  --ff-status-positive-bg-whisper: #f3faf5;
+  --ff-status-positive-border-whisper: #d7ecdf;
+  --ff-status-info-bg-whisper: #f2f6fe;
+  --ff-status-info-border-whisper: #d3e2fa;
+  --ff-status-neutral-bg-whisper: #f7f7f7;
+  --ff-status-neutral-border-whisper: #e3e3e3;
+  --ff-status-attention-bg-whisper: #fff8ef;
+  --ff-status-attention-border-whisper: #f5ddb0;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -67,6 +81,15 @@
     --ff-status-unanswered-bg: transparent;
     --ff-status-unanswered-border: #4a4a4a;
     --ff-status-unanswered-text: #808080;
+
+    --ff-status-positive-bg-whisper: #1a2620;
+    --ff-status-positive-border-whisper: #274632;
+    --ff-status-info-bg-whisper: #191f30;
+    --ff-status-info-border-whisper: #263a5c;
+    --ff-status-neutral-bg-whisper: #1f2023;
+    --ff-status-neutral-border-whisper: #333437;
+    --ff-status-attention-bg-whisper: #2a2114;
+    --ff-status-attention-border-whisper: #4a3a1e;
   }
 }
 :root[data-ff-theme="dark"] {
@@ -94,6 +117,15 @@
   --ff-status-unanswered-bg: transparent;
   --ff-status-unanswered-border: #4a4a4a;
   --ff-status-unanswered-text: #808080;
+
+  --ff-status-positive-bg-whisper: #1a2620;
+  --ff-status-positive-border-whisper: #274632;
+  --ff-status-info-bg-whisper: #191f30;
+  --ff-status-info-border-whisper: #263a5c;
+  --ff-status-neutral-bg-whisper: #1f2023;
+  --ff-status-neutral-border-whisper: #333437;
+  --ff-status-attention-bg-whisper: #2a2114;
+  --ff-status-attention-border-whisper: #4a3a1e;
 }
 
 .ff-root {
@@ -155,7 +187,14 @@
   font-weight: 600;
 }
 .ff-option-emoji { font-size: 20px; line-height: 1; }
-/* Per-option color families -- set colorKey on an option to one of these. */
+/* Per-option color families -- set colorKey on an option to one of these.
+   Unselected options get a soft "whisper" tint so the color grouping is
+   visible at a glance, before tapping anything -- selecting steps up to
+   the full, more saturated color. */
+.ff-option[data-color="positive"] { background: var(--ff-status-positive-bg-whisper); border-color: var(--ff-status-positive-border-whisper); }
+.ff-option[data-color="info"] { background: var(--ff-status-info-bg-whisper); border-color: var(--ff-status-info-border-whisper); }
+.ff-option[data-color="neutral"] { background: var(--ff-status-neutral-bg-whisper); border-color: var(--ff-status-neutral-border-whisper); }
+.ff-option[data-color="attention"] { background: var(--ff-status-attention-bg-whisper); border-color: var(--ff-status-attention-border-whisper); }
 .ff-option[data-color="positive"].ff-option-selected { background: var(--ff-status-positive-bg); border-color: var(--ff-status-positive-border); color: var(--ff-status-positive-text); }
 .ff-option[data-color="info"].ff-option-selected { background: var(--ff-status-info-bg); border-color: var(--ff-status-info-border); color: var(--ff-status-info-text); }
 .ff-option[data-color="neutral"].ff-option-selected { background: var(--ff-status-neutral-bg); border-color: var(--ff-status-neutral-border); color: var(--ff-status-neutral-text); }
@@ -180,12 +219,19 @@
 .ff-nav { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
 .ff-btn { font-size: 16px; padding: 12px 22px; border-radius: 10px; border: none; cursor: pointer; font-family: inherit; }
 .ff-btn-primary { background: var(--ff-color-primary); color: var(--ff-color-primary-contrast); margin-left: auto; }
-.ff-btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
 .ff-btn-ghost { background: transparent; color: var(--ff-color-text-muted); border: 2px solid var(--ff-color-border); }
 .ff-btn-secondary { background: var(--ff-color-primary-bg); color: var(--ff-color-primary); border: 2px solid var(--ff-color-primary-border); }
 .ff-btn-small { padding: 6px 12px; font-size: 13px; }
 .ff-btn-icon { padding: 8px 10px; font-size: 16px; line-height: 1; background: transparent; border: none; cursor: pointer; border-radius: 8px; }
 .ff-btn-icon:hover { background: var(--ff-status-attention-bg); }
+/* Disabled state, applied to any .ff-btn -- clearly greyed and inert so
+   it's obvious a required field still needs filling in, rather than the
+   button silently doing nothing when tapped. */
+.ff-btn:disabled { opacity: 0.4; cursor: not-allowed; filter: grayscale(30%); }
+.ff-btn-secondary:disabled { background: var(--ff-color-surface); color: var(--ff-color-text-muted); border-color: var(--ff-color-border); }
+
+.ff-field-toggle { display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 15px; padding: 4px 0; }
+.ff-field-toggle input[type="checkbox"] { width: 19px; height: 19px; flex: none; accent-color: var(--ff-color-primary); }
 
 .ff-repeat-list { margin-bottom: 16px; }
 .ff-repeat-entry {

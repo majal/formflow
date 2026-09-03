@@ -8,6 +8,12 @@
  * by the host passing `initialValue`/`initialNote` per step from whatever
  * it already knows (e.g. existing spreadsheet data) — the engine itself
  * keeps no persistent storage.
+ *
+ * Choice follow-ups: a schema can attach a `followUp` to an individual
+ * OPTION (richer, per-option config — text / date / a small fields form)
+ * or, for backward compatibility with older schemas, to the STEP itself
+ * with a `showWhen` list of option values that share one plain-text note.
+ * `resolveFollowUp()` below picks whichever applies.
  */
 (function (global) {
   'use strict';
@@ -34,13 +40,326 @@
     return node;
   }
 
+  function findOptionMeta(step, value) {
+    return (step.options || []).find(function (o) { return o.value === value; }) || null;
+  }
+
+  // A per-option `followUp` wins; otherwise fall back to the older
+  // step-level `followUp: { showWhen, question }` shape (plain text only).
+  function resolveFollowUp(step, opt) {
+    if (!opt) return null;
+    if (opt.followUp) return opt.followUp;
+    if (step.followUp && (step.followUp.showWhen || []).indexOf(opt.value) !== -1) {
+      var fu = {};
+      Object.keys(step.followUp).forEach(function (k) { fu[k] = step.followUp[k]; });
+      if (!fu.type) fu.type = 'text';
+      return fu;
+    }
+    return null;
+  }
+
+  // ---------------------------------------------------------------------
+  // Date rules: declarative (a name or array of names in the schema, not
+  // a function) since schemas cross a JSON network boundary and can't
+  // carry real functions. 'saturday' — PSS classes conclude on Saturdays.
+  // 'first-of-month' — pioneer service always starts on the 1st.
+  // 'not-future' — the date can't be after today (e.g. a class that
+  // already happened).
+  // ---------------------------------------------------------------------
+  function checkDateRule(isoDate, rule) {
+    var d = new Date(isoDate + 'T00:00:00');
+    if (isNaN(d.getTime())) return false;
+    if (rule === 'saturday') return d.getDay() === 6;
+    if (rule === 'first-of-month') return d.getDate() === 1;
+    if (rule === 'not-future') {
+      var today = new Date();
+      today.setHours(0, 0, 0, 0);
+      return d.getTime() <= today.getTime();
+    }
+    return true;
+  }
+  function checkDateRules(isoDate, rules) {
+    if (!rules) return true;
+    var list = Array.isArray(rules) ? rules : [rules];
+    return list.every(function (r) { return checkDateRule(isoDate, r); });
+  }
+  function dateRuleMessages(rules) {
+    var list = Array.isArray(rules) ? rules : (rules ? [rules] : []);
+    var msgs = [];
+    list.forEach(function (r) {
+      if (r === 'saturday') msgs.push('PSS classes conclude on a Saturday');
+      else if (r === 'first-of-month') msgs.push('pioneer service always starts on the 1st of a month');
+      else if (r === 'not-future') msgs.push("this date can't be in the future");
+    });
+    return (msgs.length ? msgs.join(' and ') + ' — ' : '') + 'please double-check this date.';
+  }
+
+  function isValidEmailDomain(value, domain) {
+    var re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!re.test(value)) return false;
+    if (!domain) return true;
+    return value.toLowerCase().slice(-(domain.length + 1)) === ('@' + domain.toLowerCase());
+  }
+
+  // ---------------------------------------------------------------------
+  // Follow-up panel builder — shared by the linear engine and the
+  // checklist engine. Renders whatever the follow-up needs (a plain note,
+  // a validated date, or a small multi-field form) and hands back an
+  // `evaluate()` you call once, when the user tries to save/continue,
+  // that returns { ok, note } — `note` is always a flattened string,
+  // since the backend only ever stores one notes column per answer.
+  // ---------------------------------------------------------------------
+  function serializeFields(fields, values) {
+    var lines = [];
+    (fields || []).forEach(function (f) {
+      var v = (values[f.id] || '').trim();
+      if (v) lines.push(f.label + ': ' + v);
+    });
+    return lines.join('\n');
+  }
+  function parseFields(fields, note) {
+    var values = {};
+    if (!note) return values;
+    var lines = note.split('\n');
+    (fields || []).forEach(function (f) {
+      var prefix = f.label + ': ';
+      var line = lines.find(function (l) { return l.indexOf(prefix) === 0; });
+      if (line) values[f.id] = line.slice(prefix.length);
+    });
+    return values;
+  }
+
+  function subtext(text) {
+    return el('div', { class: 'ff-subtext', style: 'margin:4px 0 0;font-size:13px;' }, [text]);
+  }
+  function errorLine(text) {
+    return el('div', { class: 'ff-date-error', style: (text ? '' : 'display:none;') + 'color:var(--ff-status-attention-text);font-size:13px;margin-top:4px;' }, [text || '']);
+  }
+
+  function buildFollowUpPanel(followUp, initialNote) {
+    var kind = followUp.type || 'text';
+    var wrap = el('div', { class: 'ff-followup' });
+    var evaluators = [];
+
+    if (kind === 'date') {
+      // A date follow-up always carries an optional notes field alongside
+      // the date itself -- the note is never required, but there's always
+      // somewhere to put context. Serialized as "<date>\nNotes: <text>" so
+      // it round-trips back into the same two fields on reopen.
+      var dateMatch = /^(\d{4}-\d{2}-\d{2})(?:\nNotes: ([\s\S]*))?$/.exec(initialNote || '');
+      var isoInitial = dateMatch ? dateMatch[1] : '';
+      var notesInitial = dateMatch ? (dateMatch[2] || '') : '';
+      var rawFallback = (!dateMatch && initialNote) ? initialNote : '';
+
+      wrap.appendChild(el('label', { class: 'ff-label', text: followUp.question || 'Date' }));
+      var dateInput = el('input', { class: 'ff-input', type: 'date' });
+      if (isoInitial) dateInput.value = isoInitial;
+      var ruleErr = errorLine(dateRuleMessages(followUp.dateRule));
+      ruleErr.style.display = 'none';
+      var warnEl = errorLine('');
+      warnEl.style.display = 'none';
+      dateInput.addEventListener('input', function () {
+        var v = dateInput.value;
+        var ruleOk = !v || checkDateRules(v, followUp.dateRule);
+        ruleErr.style.display = (v && !ruleOk) ? 'block' : 'none';
+        if (followUp.warnIfOnOrBefore && v && v <= followUp.warnIfOnOrBefore) {
+          warnEl.textContent = followUp.warnMessage || 'Heads up — that date might actually make them qualified. Worth double-checking before saving.';
+          warnEl.style.display = 'block';
+        } else {
+          warnEl.style.display = 'none';
+        }
+      });
+      wrap.appendChild(dateInput);
+      wrap.appendChild(ruleErr);
+      wrap.appendChild(warnEl);
+      if (rawFallback) wrap.appendChild(subtext('Previously noted: ' + rawFallback));
+      if (followUp.helpText) wrap.appendChild(subtext(followUp.helpText));
+
+      var notesLabel = el('label', { class: 'ff-label', text: 'Additional notes (optional)', style: 'margin-top:12px;' });
+      var notesInput = el('textarea', { class: 'ff-textarea', rows: '2', placeholder: 'optional' });
+      notesInput.value = notesInitial;
+      wrap.appendChild(notesLabel);
+      wrap.appendChild(notesInput);
+
+      evaluators.push(function () {
+        var v = dateInput.value;
+        var notesVal = notesInput.value.trim();
+        if (!v) return { ok: !followUp.required, note: notesVal };
+        var ok = checkDateRules(v, followUp.dateRule);
+        ruleErr.style.display = ok ? 'none' : 'block';
+        return { ok: ok, note: v + (notesVal ? '\nNotes: ' + notesVal : '') };
+      });
+    } else if (kind === 'fields') {
+      if (followUp.helpText) wrap.appendChild(subtext(followUp.helpText));
+      var parsed = parseFields(followUp.fields, initialNote || '');
+      var hasRawFallback = !!initialNote && Object.keys(parsed).length === 0;
+      var fieldGetters = [];
+      (followUp.fields || []).forEach(function (f) {
+        var fWrap = el('div', { class: 'ff-field' });
+        fWrap.appendChild(el('label', { class: 'ff-label', text: f.label + (f.required ? ' *' : '') }));
+        var input = f.type === 'textarea'
+          ? el('textarea', { class: 'ff-textarea', rows: '2', placeholder: f.placeholder || '' })
+          : el('input', { class: 'ff-input', type: f.type === 'email' ? 'email' : 'text', placeholder: f.placeholder || '' });
+        if (parsed[f.id]) input.value = parsed[f.id];
+        var fErr = errorLine('');
+        input.addEventListener('input', function () { fErr.style.display = 'none'; });
+        fWrap.appendChild(input);
+        fWrap.appendChild(fErr);
+        if (f.helpText) fWrap.appendChild(subtext(f.helpText));
+        wrap.appendChild(fWrap);
+        fieldGetters.push(function () {
+          var v = input.value.trim();
+          var ok = true;
+          if (f.required && !v) ok = false;
+          if (ok && v && f.type === 'email' && f.emailDomain) ok = isValidEmailDomain(v, f.emailDomain);
+          if (!ok) {
+            fErr.textContent = f.errorText || ('Please check ' + f.label.toLowerCase() + '.');
+            fErr.style.display = 'block';
+          }
+          return { ok: ok, label: f.label, value: v };
+        });
+      });
+      if (hasRawFallback) wrap.appendChild(subtext('Previously noted: ' + initialNote));
+      evaluators.push(function () {
+        var results = fieldGetters.map(function (g) { return g(); });
+        var ok = results.every(function (r) { return r.ok; });
+        var note = results.filter(function (r) { return r.value; }).map(function (r) { return r.label + ': ' + r.value; }).join('\n');
+        return { ok: ok, note: note };
+      });
+    } else {
+      // Plain text note (default / legacy shape).
+      wrap.appendChild(el('label', { class: 'ff-label', text: followUp.question || 'Add a note' }));
+      var ta = el('textarea', { class: 'ff-textarea', rows: '3', placeholder: followUp.placeholder || '' });
+      ta.value = initialNote || '';
+      wrap.appendChild(ta);
+      if (followUp.helpText) wrap.appendChild(subtext(followUp.helpText));
+      evaluators.push(function () {
+        var v = ta.value.trim();
+        return { ok: !followUp.required || !!v, note: v };
+      });
+    }
+
+    return {
+      node: wrap,
+      evaluate: function () {
+        var r = evaluators[0]();
+        return { ok: r.ok, note: r.note };
+      },
+    };
+  }
+
+  // ---------------------------------------------------------------------
+  // Repeat-group ("add one or more of these") — shared list/form builder
+  // used by both the linear engine and the checklist engine.
+  // ---------------------------------------------------------------------
+  function buildRepeatList(entries, onRemove, iconRemove) {
+    var list = el('div', { class: 'ff-repeat-list' });
+    entries.forEach(function (entry, i) {
+      var row = el('div', { class: 'ff-repeat-entry' });
+      row.appendChild(el('div', { class: 'ff-repeat-summary', text: (entry.name || '(unnamed)') }));
+      row.appendChild(iconRemove
+        ? el('button', { class: 'ff-btn-icon', type: 'button', title: 'Remove', 'aria-label': 'Remove', onclick: function () { onRemove(i); } }, ['🗑️'])
+        : el('button', { class: 'ff-btn ff-btn-ghost ff-btn-small', type: 'button', onclick: function () { onRemove(i); } }, ['Remove']));
+      list.appendChild(row);
+    });
+    return list;
+  }
+
+  // Builds the "add an entry" form for a repeat-group step. Supports a
+  // `type: 'toggle'` field (a checkbox) that other fields can depend on
+  // via `showWhen: { field: <toggle id>, equals: true|false }` — used for
+  // e.g. "coming from another circuit?" revealing CO contact fields only
+  // when checked. The Add button's enabled/disabled state is always kept
+  // in sync with validity, so it's never a mystery why tapping it does
+  // nothing.
+  function buildRepeatForm(step, onAdd) {
+    var formFields = {};
+    var fieldWraps = {};
+    var formWrap = el('div', { class: 'ff-repeat-form' });
+
+    function isVisible(f) {
+      if (!f.showWhen) return true;
+      var dep = formFields[f.showWhen.field];
+      if (!dep) return true;
+      var depVal = dep.type === 'checkbox' ? dep.checked : dep.value;
+      return depVal === f.showWhen.equals;
+    }
+    function isEntryValid() {
+      return (step.fields || []).every(function (f) {
+        if (f.type === 'toggle') return true;
+        if (!isVisible(f)) return true;
+        var v = formFields[f.id].value;
+        if (f.required && !v.trim()) return false;
+        if (f.type === 'date' && f.dateRule && v && !checkDateRules(v, f.dateRule)) return false;
+        return true;
+      });
+    }
+    var addBtn = el('button', { class: 'ff-btn ff-btn-secondary', type: 'button' }, [step.addLabel || '+ Add']);
+    function refreshAddButtonState() { addBtn.disabled = !isEntryValid(); }
+    function refreshVisibility() {
+      (step.fields || []).forEach(function (f) {
+        if (f.showWhen) fieldWraps[f.id].style.display = isVisible(f) ? '' : 'none';
+      });
+      refreshAddButtonState();
+    }
+
+    (step.fields || []).forEach(function (f) {
+      var fieldWrap;
+      if (f.type === 'toggle') {
+        var checkbox = el('input', { type: 'checkbox' });
+        checkbox.addEventListener('change', refreshVisibility);
+        formFields[f.id] = checkbox;
+        fieldWrap = el('label', { class: 'ff-field ff-field-toggle' }, [checkbox, el('span', {}, [f.label])]);
+      } else {
+        var input;
+        if (f.type === 'textarea') input = el('textarea', { class: 'ff-textarea', rows: '2', placeholder: f.placeholder || '' });
+        else if (f.type === 'date') input = el('input', { class: 'ff-input', type: 'date' });
+        else input = el('input', { class: 'ff-input', type: (f.type === 'email' ? 'email' : (f.inputType || 'text')), placeholder: f.placeholder || '' });
+        formFields[f.id] = input;
+        fieldWrap = el('div', { class: 'ff-field' }, [
+          el('label', { class: 'ff-label', text: f.label + (f.required ? ' *' : '') }),
+          input,
+        ]);
+        if (f.type === 'date' && f.dateRule) {
+          var errEl = errorLine(dateRuleMessages(f.dateRule));
+          errEl.style.display = 'none';
+          fieldWrap.appendChild(errEl);
+          input.addEventListener('input', function () {
+            errEl.style.display = (input.value && !checkDateRules(input.value, f.dateRule)) ? 'block' : 'none';
+          });
+        }
+        if (f.helpText) fieldWrap.appendChild(subtext(f.helpText));
+        input.addEventListener('input', refreshAddButtonState);
+      }
+      fieldWraps[f.id] = fieldWrap;
+      formWrap.appendChild(fieldWrap);
+    });
+
+    refreshVisibility();
+
+    addBtn.addEventListener('click', function () {
+      if (!isEntryValid()) return;
+      var entry = {};
+      (step.fields || []).forEach(function (f) {
+        if (f.type === 'toggle') { entry[f.id] = formFields[f.id].checked; return; }
+        entry[f.id] = isVisible(f) ? formFields[f.id].value : '';
+      });
+      onAdd(entry);
+    });
+    formWrap.appendChild(addBtn);
+    return formWrap;
+  }
+
+  // ---------------------------------------------------------------------
+  // Linear engine: one step at a time, Back/Continue/Skip.
+  // ---------------------------------------------------------------------
   function Engine(root, schema, opts) {
     this.root = root;
     this.schema = schema;
     this.opts = opts || {};
     this.tokens = this.opts.tokens || {};
     this.index = 0;
-    this.answers = {}; // stepId -> { value, note, entries }
+    this.answers = {}; // stepId -> { value, note } | { entries }
     (schema.steps || []).forEach(function (step) {
       if (step.type === 'choice') {
         this.answers[step.id] = { value: step.initialValue || null, note: step.initialNote || '' };
@@ -84,7 +403,6 @@
   };
 
   Engine.prototype.render = function () {
-    var self = this;
     var root = this.root;
     root.innerHTML = '';
     root.className = 'ff-root';
@@ -145,7 +463,7 @@
         class: 'ff-option' + (selected ? ' ff-option-selected' : ''),
         type: 'button',
         onclick: function () {
-          self.answers[step.id] = { value: opt.value, note: (self.answers[step.id] || {}).note || '' };
+          self.answers[step.id] = { value: opt.value, note: '' };
           self.render();
         },
       };
@@ -157,21 +475,11 @@
     });
     wrap.appendChild(optionsRow);
 
-    var showFollowUp = step.followUp && current.value && (step.followUp.showWhen || []).indexOf(current.value) !== -1;
-    if (showFollowUp) {
-      var noteBox = el('textarea', {
-        class: 'ff-textarea',
-        placeholder: step.followUp.question || 'Add a note',
-        rows: '3',
-        oninput: function (e) {
-          self.answers[step.id] = { value: current.value, note: e.target.value };
-        },
-      });
-      noteBox.value = current.note || '';
-      wrap.appendChild(el('div', { class: 'ff-followup' }, [
-        el('label', { class: 'ff-label', text: step.followUp.question || 'Add a note' }),
-        noteBox,
-      ]));
+    var fu = resolveFollowUp(step, findOptionMeta(step, current.value));
+    var panel = null;
+    if (fu && current.value) {
+      panel = buildFollowUpPanel(fu, current.note || '');
+      wrap.appendChild(panel.node);
     }
 
     var continueBtn = el('button', {
@@ -179,7 +487,13 @@
       type: 'button',
       onclick: function () {
         if (!current.value) return;
-        self.recordAnswer(step.id, current.value, (self.answers[step.id] || {}).note || '');
+        var note = '';
+        if (panel) {
+          var result = panel.evaluate();
+          if (!result.ok) return;
+          note = result.note;
+        }
+        self.recordAnswer(step.id, current.value, note);
         self.next();
       },
     }, [this.index >= this.schema.steps.length - 1 ? 'Finish' : 'Continue']);
@@ -205,7 +519,7 @@
     input.value = current.value || '';
     var wrap = el('div', { class: 'ff-text-wrap' }, [input]);
     wrap.appendChild(el('div', { class: 'ff-nav' }, [
-      this.index > 0 ? el('button', { class: 'ff-btn ff-btn-ghost', type: 'button', onclick: function () { self.back(); } }, ['Back']) : null,
+      this.index > 0 ? el('button', { class: 'ff-btn ff-btn-ghost', type: 'button', onclick: function () { self.back(); } }) : null,
       step.skippable ? el('button', { class: 'ff-btn ff-btn-ghost', type: 'button', onclick: function () { self.next(); } }, ['Skip for now']) : null,
       el('button', {
         class: 'ff-btn ff-btn-primary',
@@ -224,47 +538,13 @@
     var self = this;
     var state = this.answers[step.id] || { entries: [] };
     var wrap = el('div', { class: 'ff-repeat-wrap' });
-    var list = el('div', { class: 'ff-repeat-list' });
-
-    state.entries.forEach(function (entry, i) {
-      var row = el('div', { class: 'ff-repeat-entry' });
-      row.appendChild(el('div', { class: 'ff-repeat-summary', text: (entry.name || '(unnamed)') }));
-      row.appendChild(el('button', {
-        class: 'ff-btn ff-btn-ghost ff-btn-small', type: 'button',
-        onclick: function () { state.entries.splice(i, 1); self.render(); },
-      }, ['Remove']));
-      list.appendChild(row);
-    });
-    wrap.appendChild(list);
-
-    var formFields = {};
-    var formWrap = el('div', { class: 'ff-repeat-form' });
-    (step.fields || []).forEach(function (f) {
-      var input = f.type === 'textarea' ? el('textarea', { class: 'ff-textarea', rows: '2', placeholder: f.label }) : el('input', { class: 'ff-input', type: 'text', placeholder: f.label });
-      formFields[f.id] = input;
-      formWrap.appendChild(el('div', { class: 'ff-field' }, [
-        el('label', { class: 'ff-label', text: f.label }),
-        input,
-      ]));
-    });
-    formWrap.appendChild(el('button', {
-      class: 'ff-btn ff-btn-secondary', type: 'button',
-      onclick: function () {
-        var entry = {};
-        var missingRequired = false;
-        (step.fields || []).forEach(function (f) {
-          entry[f.id] = formFields[f.id].value;
-          if (f.required && !entry[f.id].trim()) missingRequired = true;
-        });
-        if (missingRequired) return;
-        state.entries.push(entry);
-        self.answers[step.id] = state;
-        if (self.opts.onAnswer) self.opts.onAnswer(step.id, entry, '');
-        self.render();
-      },
-    }, [step.addLabel || '+ Add']));
-    wrap.appendChild(formWrap);
-
+    wrap.appendChild(buildRepeatList(state.entries, function (i) { state.entries.splice(i, 1); self.render(); }, false));
+    wrap.appendChild(buildRepeatForm(step, function (entry) {
+      state.entries.push(entry);
+      self.answers[step.id] = state;
+      if (self.opts.onAnswer) self.opts.onAnswer(step.id, entry, '');
+      self.render();
+    }));
     wrap.appendChild(this.buildNavRow(step, false));
     return wrap;
   };
@@ -279,11 +559,6 @@
   // render as fixed cards above/below the list rather than being part of
   // the jump target set.
   // ---------------------------------------------------------------------
-
-  function findOptionMeta(step, value) {
-    return (step.options || []).find(function (o) { return o.value === value; }) || null;
-  }
-
   function ChecklistEngine(root, schema, opts) {
     this.root = root;
     this.schema = schema;
@@ -333,7 +608,7 @@
 
   ChecklistEngine.prototype.renderList = function () {
     var self = this;
-    var wrap = document.createDocumentFragment ? el('div', {}) : el('div', {});
+    var wrap = el('div', {});
 
     var total = this.itemSteps.length;
     var done = this.answeredCount();
@@ -394,9 +669,14 @@
         class: 'ff-option' + (selected ? ' ff-option-selected' : ''),
         type: 'button',
         onclick: function () {
-          var note = (self.answers[stepId] || {}).note || '';
-          self.answers[stepId] = { value: opt.value, note: note };
-          self.recordAndMaybeReturn(step, opt.value, note);
+          var fuForOpt = resolveFollowUp(step, opt);
+          if (!fuForOpt) {
+            self.answers[stepId] = { value: opt.value, note: '' };
+            self.recordAndMaybeReturn(step, opt.value, '');
+          } else {
+            self.answers[stepId] = { value: opt.value, note: (self.answers[stepId] || {}).note || '' };
+            self.render();
+          }
         },
       };
       if (opt.colorKey) attrs['data-color'] = opt.colorKey;
@@ -407,40 +687,38 @@
     });
     card.appendChild(optionsRow);
 
-    var showFollowUp = step.followUp && current.value && (step.followUp.showWhen || []).indexOf(current.value) !== -1;
-    if (showFollowUp) {
-      var noteBox = el('textarea', {
-        class: 'ff-textarea', placeholder: step.followUp.question || 'Add a note', rows: '3',
-        oninput: function (e) { self.answers[stepId] = { value: current.value, note: e.target.value }; },
-      });
-      noteBox.value = current.note || '';
-      card.appendChild(el('div', { class: 'ff-followup' }, [
-        el('label', { class: 'ff-label', text: step.followUp.question || 'Add a note' }),
-        noteBox,
-      ]));
-      card.appendChild(el('div', { class: 'ff-nav' }, [
-        el('button', {
-          class: 'ff-btn ff-btn-primary', type: 'button',
-          onclick: function () { self.recordAndMaybeReturn(step, current.value, self.answers[stepId].note || ''); },
-        }, ['Save & back to list']),
-      ]));
+    var fu = resolveFollowUp(step, findOptionMeta(step, current.value));
+    if (fu && current.value) {
+      var panel = buildFollowUpPanel(fu, current.note || '');
+      card.appendChild(panel.node);
+      var saveBtn = el('button', {
+        class: 'ff-btn ff-btn-primary', type: 'button',
+        onclick: function () {
+          var result = panel.evaluate();
+          if (!result.ok) return;
+          self.answers[stepId] = { value: current.value, note: result.note };
+          self.recordAndMaybeReturn(step, current.value, result.note, { immediate: true });
+        },
+      }, ['Save & back to list']);
+      var cancelBtn = el('button', {
+        class: 'ff-btn ff-btn-ghost', type: 'button',
+        onclick: function () { self.closeDetail(); },
+      }, ['Cancel']);
+      card.appendChild(el('div', { class: 'ff-nav' }, [cancelBtn, saveBtn]));
     }
 
     return card;
   };
 
-  ChecklistEngine.prototype.recordAndMaybeReturn = function (step, value, note) {
+  ChecklistEngine.prototype.recordAndMaybeReturn = function (step, value, note, opts) {
     if (this.opts.onAnswer) this.opts.onAnswer(step.id, value, note);
-    // If this option has a required/expected follow-up note and it's still
-    // empty, stay on the detail view so the note box is visible instead of
-    // bouncing back to the list -- render() will show it since answers[]
-    // was already updated by the caller.
+    if (opts && opts.immediate) {
+      this.closeDetail();
+      return;
+    }
     this.render();
     var self = this;
-    var showsFollowUp = step.followUp && (step.followUp.showWhen || []).indexOf(value) !== -1;
-    if (!showsFollowUp) {
-      setTimeout(function () { self.closeDetail(); }, 220);
-    }
+    setTimeout(function () { self.closeDetail(); }, 220);
   };
 
   ChecklistEngine.prototype.renderRepeatCard = function (step) {
@@ -449,84 +727,14 @@
     var card = el('div', { class: 'ff-card' });
     card.appendChild(el('h2', { class: 'ff-question' }, [interpolate(step.question, this.tokens)]));
     if (step.subtext) card.appendChild(el('p', { class: 'ff-subtext', text: interpolate(step.subtext, this.tokens) }));
-
-    var list = el('div', { class: 'ff-repeat-list' });
-    entries.forEach(function (entry, i) {
-      var row = el('div', { class: 'ff-repeat-entry' });
-      row.appendChild(el('div', { class: 'ff-repeat-summary', text: (entry.name || '(unnamed)') }));
-      row.appendChild(el('button', {
-        class: 'ff-btn-icon', type: 'button', title: 'Remove', 'aria-label': 'Remove',
-        onclick: function () { entries.splice(i, 1); self.render(); },
-      }, ['🗑️']));
-      list.appendChild(row);
-    });
-    card.appendChild(list);
-
-    var formFields = {};
-    var formWrap = el('div', { class: 'ff-repeat-form' });
-    (step.fields || []).forEach(function (f) {
-      var input;
-      if (f.type === 'textarea') {
-        input = el('textarea', { class: 'ff-textarea', rows: '2', placeholder: f.label });
-      } else if (f.type === 'date') {
-        input = el('input', { class: 'ff-input', type: 'date' });
-      } else {
-        input = el('input', { class: 'ff-input', type: f.inputType || 'text', placeholder: f.label });
-      }
-      formFields[f.id] = input;
-      var fieldWrap = el('div', { class: 'ff-field' }, [
-        el('label', { class: 'ff-label', text: f.label }),
-        input,
-      ]);
-      if (f.type === 'date' && f.dateRule) {
-        var errEl = el('div', { class: 'ff-date-error', style: 'display:none;color:var(--ff-status-attention-text);font-size:13px;margin-top:4px;' }, [dateRuleMessage(f.dateRule)]);
-        fieldWrap.appendChild(errEl);
-        input.addEventListener('input', function () {
-          errEl.style.display = (input.value && !checkDateRule(input.value, f.dateRule)) ? 'block' : 'none';
-        });
-      }
-      if (f.helpText) {
-        fieldWrap.appendChild(el('div', { class: 'ff-subtext', style: 'margin:4px 0 0;font-size:13px;' }, [f.helpText]));
-      }
-      formWrap.appendChild(fieldWrap);
-    });
-    formWrap.appendChild(el('button', {
-      class: 'ff-btn ff-btn-secondary', type: 'button',
-      onclick: function () {
-        var entry = {};
-        var missingRequired = false;
-        (step.fields || []).forEach(function (f) {
-          entry[f.id] = formFields[f.id].value;
-          if (f.required && !entry[f.id].trim()) missingRequired = true;
-          if (f.type === 'date' && f.dateRule && entry[f.id] && !checkDateRule(entry[f.id], f.dateRule)) missingRequired = true;
-        });
-        if (missingRequired) return;
-        entries.push(entry);
-        if (self.opts.onAnswer) self.opts.onAnswer(step.id, entry, '');
-        self.render();
-      },
-    }, [step.addLabel || '+ Add']));
-    card.appendChild(formWrap);
+    card.appendChild(buildRepeatList(entries, function (i) { entries.splice(i, 1); self.render(); }, true));
+    card.appendChild(buildRepeatForm(step, function (entry) {
+      entries.push(entry);
+      if (self.opts.onAnswer) self.opts.onAnswer(step.id, entry, '');
+      self.render();
+    }));
     return card;
   };
-
-  // Built-in date rules: 'saturday' (PSS classes conclude on Saturdays,
-  // so a "last PSS date" should land on one) and 'first-of-month' (a
-  // pioneer's service always starts on the 1st). Declarative (a rule
-  // name in the schema, not a function) since schemas cross a JSON
-  // network boundary and can't carry real functions.
-  function checkDateRule(isoDate, rule) {
-    var d = new Date(isoDate + 'T00:00:00');
-    if (isNaN(d.getTime())) return false;
-    if (rule === 'saturday') return d.getDay() === 6;
-    if (rule === 'first-of-month') return d.getDate() === 1;
-    return true;
-  }
-  function dateRuleMessage(rule) {
-    if (rule === 'saturday') return 'PSS classes conclude on a Saturday — double-check this date.';
-    if (rule === 'first-of-month') return 'Pioneer service always starts on the 1st of a month — double-check this date.';
-    return 'Please double-check this date.';
-  }
 
   global.Formflow = {
     mount: function (root, schema, opts) {
