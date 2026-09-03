@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Survey</title>
+<link rel="stylesheet" href="formflow.css">
+<style>
+  body { margin: 0; background: #fafafa; }
+  .ff-error, .ff-loading { max-width: 640px; margin: 60px auto; padding: 16px; font-family: -apple-system, sans-serif; text-align: center; color: #555; }
+</style>
+</head>
+<body>
+<div id="app"><div class="ff-loading">Loading…</div></div>
+
+<script src="formflow.js"></script>
+<script>
+  var API_BASE = "/api"; // adjust to wherever worker.ts is mounted
+  var appEl = document.getElementById('app');
+  var token = new URLSearchParams(window.location.search).get('t'); // pick your own param name
+
+  function showError(msg) { appEl.innerHTML = '<div class="ff-error">' + msg + '</div>'; }
+
+  if (!token) {
+    showError('This link is missing its code.');
+  } else {
+    fetch(API_BASE + '/survey/' + token)
+      .then(function (r) { if (!r.ok) throw new Error('not_found'); return r.json(); })
+      .then(function (schema) {
+        document.title = schema.title;
+        Formflow.mount(appEl, schema, {
+          onAnswer: function (stepId, value, note) {
+            var path = stepId === 'additions' ? '/addition' : '/answer'; // match your own repeat-group step id
+            var body = stepId === 'additions' ? value : { stepId: stepId, value: value, note: note };
+            fetch(API_BASE + '/survey/' + token + path, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(body),
+            }).then(function (r) {
+              if (!r.ok) alert('Could not save that answer. Please reload and try again.');
+            });
+          },
+        });
+      })
+      .catch(function () { showError('Could not load this form.'); });
+  }
+</script>
+</body>
+</html>
