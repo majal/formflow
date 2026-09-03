@@ -1,0 +1,130 @@
+/* formflow default styling — mobile-first, big tap targets, no framework. */
+
+.ff-root {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 16px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color: #1a1a1a;
+}
+
+.ff-progress {
+  height: 6px;
+  background: #e8e8e8;
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 28px;
+}
+.ff-progress-fill {
+  height: 100%;
+  background: #2f6fed;
+  transition: width 0.25s ease;
+}
+
+.ff-card {
+  animation: ff-fade-in 0.2s ease;
+}
+@keyframes ff-fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.ff-question {
+  font-size: 22px;
+  line-height: 1.35;
+  margin: 0 0 8px;
+}
+.ff-subtext {
+  font-size: 15px;
+  color: #666;
+  margin: 0 0 20px;
+}
+
+.ff-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.ff-option {
+  text-align: left;
+  padding: 16px 18px;
+  font-size: 17px;
+  border: 2px solid #e0e0e0;
+  border-radius: 12px;
+  background: #fff;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.ff-option:hover { border-color: #b9cdfb; }
+.ff-option-selected {
+  border-color: #2f6fed;
+  background: #eef4ff;
+  font-weight: 600;
+}
+
+.ff-followup { margin: 12px 0 20px; }
+.ff-label { display: block; font-size: 14px; color: #555; margin-bottom: 6px; }
+.ff-textarea, .ff-input {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 16px;
+  padding: 12px 14px;
+  border: 2px solid #e0e0e0;
+  border-radius: 10px;
+  font-family: inherit;
+  resize: vertical;
+}
+.ff-textarea:focus, .ff-input:focus { outline: none; border-color: #2f6fed; }
+
+.ff-nav {
+  display: flex;
+  gap: 10px;
+  margin-top: 20px;
+  flex-wrap: wrap;
+}
+.ff-btn {
+  font-size: 16px;
+  padding: 12px 22px;
+  border-radius: 10px;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+}
+.ff-btn-primary {
+  background: #2f6fed;
+  color: #fff;
+  margin-left: auto;
+}
+.ff-btn-primary:disabled { background: #b9cdfb; cursor: not-allowed; }
+.ff-btn-ghost {
+  background: transparent;
+  color: #555;
+  border: 2px solid #e0e0e0;
+}
+.ff-btn-secondary {
+  background: #eef4ff;
+  color: #2f6fed;
+  border: 2px solid #b9cdfb;
+}
+.ff-btn-small { padding: 6px 12px; font-size: 13px; }
+
+.ff-repeat-list { margin-bottom: 16px; }
+.ff-repeat-entry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border: 1px solid #eee;
+  border-radius: 8px;
+  margin-bottom: 8px;
+}
+.ff-repeat-form { border-top: 1px dashed #ddd; padding-top: 16px; }
+.ff-field { margin-bottom: 12px; }
+
+.ff-done { text-align: center; padding: 40px 0; }
+
+@media (max-width: 480px) {
+  .ff-question { font-size: 19px; }
+  .ff-btn-primary { margin-left: 0; order: 99; width: 100%; }
+}

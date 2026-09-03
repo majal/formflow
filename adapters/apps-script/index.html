@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <?!= include('formflow_css'); ?>
+  <style>
+    body { margin: 0; background: #fafafa; }
+    .ff-error { max-width: 640px; margin: 60px auto; padding: 16px; font-family: -apple-system, sans-serif; text-align: center; color: #555; }
+    .ff-loading { max-width: 640px; margin: 60px auto; padding: 16px; font-family: -apple-system, sans-serif; text-align: center; color: #999; }
+  </style>
+</head>
+<body>
+  <div id="app"><div class="ff-loading">Loading…</div></div>
+
+  <?!= include('formflow_js'); ?>
+  <script>
+    var congToken = <?!= JSON.stringify(congToken) ?>;
+    var appEl = document.getElementById('app');
+
+    if (!congToken) {
+      appEl.innerHTML = '<div class="ff-error">This link is missing its congregation code. Ask the circuit overseer for your congregation\'s specific link.</div>';
+    } else {
+      google.script.run
+        .withSuccessHandler(function (schema) {
+          if (schema.error) {
+            appEl.innerHTML = '<div class="ff-error">' + schema.error + '</div>';
+            return;
+          }
+          document.title = schema.title;
+          var stepMeta = {};
+          schema.steps.forEach(function (s) { if (s.meta) stepMeta[s.id] = s.meta; });
+
+          Formflow.mount(appEl, schema, {
+            onAnswer: function (stepId, value, note) {
+              if (stepId === 'additions') {
+                google.script.run.submitAddition(value, schema.congregation);
+                return;
+              }
+              var meta = stepMeta[stepId];
+              if (!meta) return; // info/other steps don't persist
+              google.script.run
+                .withFailureHandler(function (err) {
+                  alert('Could not save that answer: ' + err.message + '\nPlease reload the page and try again.');
+                })
+                .submitAnswer(stepId, value, note, meta);
+            },
+          });
+        })
+        .withFailureHandler(function (err) {
+          appEl.innerHTML = '<div class="ff-error">Could not load the form: ' + err.message + '</div>';
+        })
+        .getCongregationForm(congToken);
+    }
+  </script>
+</body>
+</html>
