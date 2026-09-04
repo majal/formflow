@@ -94,6 +94,127 @@
     return (msgs.length ? msgs.join(' and ') + ' — ' : '') + 'please double-check this date.';
   }
 
+  // ---------------------------------------------------------------------
+  // Flexible date entry: a typed value is parsed permissively (several
+  // common formats), then re-displayed in one unambiguous canonical
+  // format ("Nov 14, 2026") so the user can instantly confirm what was
+  // understood — the same "type it, we'll reformat it" pattern
+  // spreadsheets use, instead of forcing everyone through a native
+  // picker (mobile date pickers are slow to scroll through for a birth-
+  // year-scale range, and typing is faster once you know the format).
+  // A native <input type="date"> stays available alongside it as a real,
+  // fully-accessible "or pick a date" option — not hidden or faked.
+  // ---------------------------------------------------------------------
+  var MONTH_NAMES = ['january', 'february', 'march', 'april', 'may', 'june',
+    'july', 'august', 'september', 'october', 'november', 'december'];
+
+  function monthIndexFromName(token) {
+    var t = (token || '').toLowerCase().replace(/\.$/, '');
+    for (var i = 0; i < MONTH_NAMES.length; i++) {
+      if (MONTH_NAMES[i] === t || MONTH_NAMES[i].slice(0, 3) === t) return i;
+    }
+    return -1;
+  }
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+  function toIso(y, monthIndex, d) {
+    if (y < 100) y += 2000;
+    var date = new Date(y, monthIndex, d);
+    // Date() silently rolls over invalid values (e.g. Feb 30 -> Mar 2) --
+    // reject anything that didn't round-trip instead of accepting a
+    // guess the user didn't type.
+    if (date.getFullYear() !== y || date.getMonth() !== monthIndex || date.getDate() !== d) return null;
+    return y + '-' + pad2(monthIndex + 1) + '-' + pad2(d);
+  }
+  // Accepts: ISO (2026-11-14), numeric M/D/Y or M-D-Y with 2- or 4-digit
+  // year (11/14/2026, 11-14-26), numeric Y-M-D (2026-11-14 already
+  // covered, or 2026/11/14), and month-name forms in either order
+  // ("Nov 14, 2026", "14 November 2026") -- unambiguous whenever a month
+  // NAME is present, which is most of what people actually type.
+  function parseFlexibleDate(raw) {
+    var s = (raw || '').trim();
+    if (!s) return null;
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+    if (m) return toIso(+m[1], +m[2] - 1, +m[3]);
+    m = /^([A-Za-z]+)\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{2,4})$/.exec(s);
+    if (m) {
+      var mi1 = monthIndexFromName(m[1]);
+      if (mi1 !== -1) return toIso(+m[3], mi1, +m[2]);
+    }
+    m = /^(\d{1,2})(?:st|nd|rd|th)?\s+([A-Za-z]+)\.?,?\s+(\d{2,4})$/.exec(s);
+    if (m) {
+      var mi2 = monthIndexFromName(m[2]);
+      if (mi2 !== -1) return toIso(+m[3], mi2, +m[1]);
+    }
+    m = /^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/.exec(s);
+    if (m) return toIso(+m[3], +m[1] - 1, +m[2]);
+    m = /^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/.exec(s);
+    if (m) return toIso(+m[1], +m[2] - 1, +m[3]);
+    return null;
+  }
+  function formatFriendlyDate(iso) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || '');
+    if (!m) return '';
+    var name = MONTH_NAMES[+m[2] - 1];
+    return name.slice(0, 1).toUpperCase() + name.slice(1, 3) + ' ' + (+m[3]) + ', ' + m[1];
+  }
+
+  var dateFieldSeq = 0;
+  /** A hybrid date field: type-and-reformat text input + a real native
+   * <input type="date"> alongside it. opts: { initialIso, placeholder }.
+   * Returns { node, getIso(), isTextUnparseable(), textInput, nativeInput }. */
+  function buildDateField(opts) {
+    opts = opts || {};
+    var id = 'ff-date-' + (dateFieldSeq++);
+    var currentIso = /^\d{4}-\d{2}-\d{2}$/.test(opts.initialIso || '') ? opts.initialIso : '';
+    var textInput = el('input', {
+      class: 'ff-input', type: 'text', inputmode: 'text', autocomplete: 'off',
+      placeholder: opts.placeholder || 'e.g. Nov 14, 2026',
+    });
+    var nativeInput = el('input', { class: 'ff-input ff-date-native', type: 'date', id: id });
+    if (currentIso) {
+      textInput.value = formatFriendlyDate(currentIso);
+      nativeInput.value = currentIso;
+    }
+    textInput.addEventListener('blur', function () {
+      var v = textInput.value.trim();
+      if (!v) { currentIso = ''; nativeInput.value = ''; return; }
+      var parsed = parseFlexibleDate(v);
+      if (parsed) {
+        currentIso = parsed;
+        textInput.value = formatFriendlyDate(parsed); // reformat so the user can confirm what was understood
+        nativeInput.value = parsed;
+      }
+    });
+    nativeInput.addEventListener('input', function () {
+      currentIso = nativeInput.value || '';
+      if (currentIso) textInput.value = formatFriendlyDate(currentIso);
+    });
+    var wrap = el('div', { class: 'ff-date-field' }, [
+      el('div', { class: 'ff-date-row' }, [
+        textInput,
+        el('label', { class: 'ff-date-native-wrap', for: id }, [
+          el('span', { class: 'ff-date-native-label', text: 'or pick:' }),
+          nativeInput,
+        ]),
+      ]),
+    ]);
+    return {
+      node: wrap,
+      getIso: function () {
+        var typed = textInput.value.trim();
+        if (!typed) return '';
+        var parsedNow = parseFlexibleDate(typed);
+        return parsedNow || currentIso;
+      },
+      isTextUnparseable: function () {
+        var typed = textInput.value.trim();
+        return !!typed && !parseFlexibleDate(typed);
+      },
+      textInput: textInput,
+      nativeInput: nativeInput,
+    };
+  }
+
   function isValidEmailDomain(value, domain) {
     var re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!re.test(value)) return false;
@@ -152,14 +273,17 @@
       var rawFallback = (!dateMatch && initialNote) ? initialNote : '';
 
       wrap.appendChild(el('label', { class: 'ff-label', text: followUp.question || 'Date' }));
-      var dateInput = el('input', { class: 'ff-input', type: 'date' });
-      if (isoInitial) dateInput.value = isoInitial;
+      var dateField = buildDateField({ initialIso: isoInitial });
+      wrap.appendChild(dateField.node);
+      var unparsedErr = errorLine("Hmm, we couldn't quite read that date — try something like \"Nov 14, 2026\" or use the picker.");
+      unparsedErr.style.display = 'none';
       var ruleErr = errorLine(dateRuleMessages(followUp.dateRule));
       ruleErr.style.display = 'none';
       var warnEl = errorLine('');
       warnEl.style.display = 'none';
-      dateInput.addEventListener('input', function () {
-        var v = dateInput.value;
+      function refreshDateChecks() {
+        var v = dateField.getIso();
+        unparsedErr.style.display = dateField.isTextUnparseable() ? 'block' : 'none';
         var ruleOk = !v || checkDateRules(v, followUp.dateRule);
         ruleErr.style.display = (v && !ruleOk) ? 'block' : 'none';
         if (followUp.warnIfOnOrBefore && v && v <= followUp.warnIfOnOrBefore) {
@@ -168,8 +292,10 @@
         } else {
           warnEl.style.display = 'none';
         }
-      });
-      wrap.appendChild(dateInput);
+      }
+      dateField.textInput.addEventListener('blur', refreshDateChecks);
+      dateField.nativeInput.addEventListener('input', refreshDateChecks);
+      wrap.appendChild(unparsedErr);
       wrap.appendChild(ruleErr);
       wrap.appendChild(warnEl);
       if (rawFallback) wrap.appendChild(subtext('Previously noted: ' + rawFallback));
@@ -182,11 +308,12 @@
       wrap.appendChild(notesInput);
 
       evaluators.push(function () {
-        var v = dateInput.value;
+        var v = dateField.getIso();
         var notesVal = notesInput.value.trim();
+        if (dateField.isTextUnparseable()) { refreshDateChecks(); return { ok: false, note: notesVal }; }
         if (!v) return { ok: !followUp.required, note: notesVal };
         var ok = checkDateRules(v, followUp.dateRule);
-        ruleErr.style.display = ok ? 'none' : 'block';
+        refreshDateChecks();
         return { ok: ok, note: v + (notesVal ? '\nNotes: ' + notesVal : '') };
       });
     } else if (kind === 'fields') {
@@ -284,11 +411,18 @@
       var depVal = dep.type === 'checkbox' ? dep.checked : dep.value;
       return depVal === f.showWhen.equals;
     }
+    // Date fields store a buildDateField() handle (getIso()), not a plain
+    // input -- everything else reads .value directly.
+    function fieldValue(f) {
+      var handle = formFields[f.id];
+      return f.type === 'date' ? handle.getIso() : handle.value;
+    }
     function isEntryValid() {
       return (step.fields || []).every(function (f) {
         if (f.type === 'toggle') return true;
         if (!isVisible(f)) return true;
-        var v = formFields[f.id].value;
+        if (f.type === 'date' && formFields[f.id].isTextUnparseable()) return false;
+        var v = fieldValue(f);
         if (f.required && !v.trim()) return false;
         if (f.type === 'date' && f.dateRule && v && !checkDateRules(v, f.dateRule)) return false;
         return true;
@@ -310,24 +444,41 @@
         checkbox.addEventListener('change', refreshVisibility);
         formFields[f.id] = checkbox;
         fieldWrap = el('label', { class: 'ff-field ff-field-toggle' }, [checkbox, el('span', {}, [f.label])]);
+      } else if (f.type === 'date') {
+        var dateField = buildDateField({ placeholder: f.placeholder });
+        formFields[f.id] = dateField;
+        fieldWrap = el('div', { class: 'ff-field' }, [
+          el('label', { class: 'ff-label', text: f.label + (f.required ? ' *' : '') }),
+          dateField.node,
+        ]);
+        var unparsedErr = errorLine("Hmm, we couldn't quite read that date — try something like \"Nov 14, 2026\" or use the picker.");
+        unparsedErr.style.display = 'none';
+        fieldWrap.appendChild(unparsedErr);
+        if (f.dateRule) {
+          var dateErrEl = errorLine(dateRuleMessages(f.dateRule));
+          dateErrEl.style.display = 'none';
+          fieldWrap.appendChild(dateErrEl);
+        }
+        function refreshDateField() {
+          unparsedErr.style.display = dateField.isTextUnparseable() ? 'block' : 'none';
+          if (f.dateRule) {
+            var v = dateField.getIso();
+            dateErrEl.style.display = (v && !checkDateRules(v, f.dateRule)) ? 'block' : 'none';
+          }
+          refreshAddButtonState();
+        }
+        dateField.textInput.addEventListener('blur', refreshDateField);
+        dateField.nativeInput.addEventListener('input', refreshDateField);
+        if (f.helpText) fieldWrap.appendChild(subtext(f.helpText));
       } else {
         var input;
         if (f.type === 'textarea') input = el('textarea', { class: 'ff-textarea', rows: '2', placeholder: f.placeholder || '' });
-        else if (f.type === 'date') input = el('input', { class: 'ff-input', type: 'date' });
         else input = el('input', { class: 'ff-input', type: (f.type === 'email' ? 'email' : (f.inputType || 'text')), placeholder: f.placeholder || '' });
         formFields[f.id] = input;
         fieldWrap = el('div', { class: 'ff-field' }, [
           el('label', { class: 'ff-label', text: f.label + (f.required ? ' *' : '') }),
           input,
         ]);
-        if (f.type === 'date' && f.dateRule) {
-          var errEl = errorLine(dateRuleMessages(f.dateRule));
-          errEl.style.display = 'none';
-          fieldWrap.appendChild(errEl);
-          input.addEventListener('input', function () {
-            errEl.style.display = (input.value && !checkDateRules(input.value, f.dateRule)) ? 'block' : 'none';
-          });
-        }
         if (f.helpText) fieldWrap.appendChild(subtext(f.helpText));
         input.addEventListener('input', refreshAddButtonState);
       }
@@ -342,7 +493,7 @@
       var entry = {};
       (step.fields || []).forEach(function (f) {
         if (f.type === 'toggle') { entry[f.id] = formFields[f.id].checked; return; }
-        entry[f.id] = isVisible(f) ? formFields[f.id].value : '';
+        entry[f.id] = isVisible(f) ? fieldValue(f) : '';
       });
       onAdd(entry);
     });
