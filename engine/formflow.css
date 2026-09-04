@@ -29,9 +29,9 @@
   --ff-status-info-bg: #eaf2fe;
   --ff-status-info-border: #a7c8fa;
   --ff-status-info-text: #2258a8;
-  --ff-status-neutral-bg: #f2f2f2;
-  --ff-status-neutral-border: #cfcfcf;
-  --ff-status-neutral-text: #5a5a5a;
+  --ff-status-neutral-bg: #e2e2e2;
+  --ff-status-neutral-border: #9a9a9a;
+  --ff-status-neutral-text: #444444;
   --ff-status-attention-bg: #fff2e0;
   --ff-status-attention-border: #f3c583;
   --ff-status-attention-text: #92590a;
@@ -72,9 +72,9 @@
     --ff-status-info-bg: #16233b;
     --ff-status-info-border: #2c4d82;
     --ff-status-info-text: #8fb8f5;
-    --ff-status-neutral-bg: #262626;
-    --ff-status-neutral-border: #444444;
-    --ff-status-neutral-text: #b5b5b5;
+    --ff-status-neutral-bg: #333333;
+    --ff-status-neutral-border: #808080;
+    --ff-status-neutral-text: #d0d0d0;
     --ff-status-attention-bg: #3a2a10;
     --ff-status-attention-border: #7a5720;
     --ff-status-attention-text: #f0b968;
@@ -108,9 +108,9 @@
   --ff-status-info-bg: #16233b;
   --ff-status-info-border: #2c4d82;
   --ff-status-info-text: #8fb8f5;
-  --ff-status-neutral-bg: #262626;
-  --ff-status-neutral-border: #444444;
-  --ff-status-neutral-text: #b5b5b5;
+  --ff-status-neutral-bg: #333333;
+  --ff-status-neutral-border: #808080;
+  --ff-status-neutral-text: #d0d0d0;
   --ff-status-attention-bg: #3a2a10;
   --ff-status-attention-border: #7a5720;
   --ff-status-attention-text: #f0b968;
@@ -187,6 +187,21 @@
   border-color: var(--ff-color-primary);
   background: var(--ff-color-primary-bg);
   font-weight: 600;
+  border-width: 3px;
+}
+/* A checkmark on the selected option is a color-independent "this one's
+   picked" signal -- needed because the neutral/gray color family's
+   selected vs. unselected tints are naturally close to each other (no
+   hue to lean on), so color alone doesn't reliably read as "selected"
+   there the way it does for green/blue/orange. currentColor picks up
+   each color family's own selected text color automatically. */
+.ff-option-selected::after {
+  content: '✓';
+  margin-left: auto;
+  flex: none;
+  font-size: 18px;
+  font-weight: 700;
+  color: currentColor;
 }
 .ff-option-emoji { font-size: 20px; line-height: 1; }
 /* Keyboard-shortcut hint (press 1-9 to pick that option) -- only shown
@@ -237,6 +252,7 @@
 .ff-btn-primary { background: var(--ff-color-primary); color: var(--ff-color-primary-contrast); margin-left: auto; }
 .ff-btn-ghost { background: transparent; color: var(--ff-color-text-muted); border: 2px solid var(--ff-color-border); }
 .ff-btn-secondary { background: var(--ff-color-primary-bg); color: var(--ff-color-primary); border: 2px solid var(--ff-color-primary-border); }
+.ff-clear-answer { margin-top: 2px; margin-bottom: 16px; font-size: 14px; padding: 8px 16px; }
 .ff-btn-small { padding: 6px 12px; font-size: 14px; }
 .ff-btn-icon { padding: 8px 10px; font-size: 16px; line-height: 1; background: transparent; border: none; cursor: pointer; border-radius: 8px; }
 .ff-btn-icon:hover { background: var(--ff-status-attention-bg); }
