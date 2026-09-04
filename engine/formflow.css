@@ -291,6 +291,27 @@
   font-size: 15px; cursor: pointer; padding: 4px 0 16px; font-family: inherit;
 }
 
+/* ---------- Hybrid date field: type-and-reformat text + a real native
+   picker alongside it. See buildDateField() -- typing is the primary,
+   faster path once you know the format ("Nov 14, 2026"); the native
+   input is a genuine, fully-accessible "or pick one" alternative, not a
+   hidden trick. Side-by-side on room to spare, stacked on narrow/mobile
+   screens where a picker crammed next to a text field gets too tight to
+   tap accurately. ---------- */
+.ff-date-row { display: flex; gap: 10px; align-items: flex-start; flex-wrap: wrap; }
+.ff-date-row .ff-input { flex: 1 1 180px; min-width: 0; }
+.ff-date-native-wrap {
+  display: flex; flex-direction: column; gap: 4px; flex: 1 1 160px; min-width: 0;
+  cursor: pointer;
+}
+.ff-date-native-label { font-size: 12px; color: var(--ff-color-text-muted); }
+.ff-date-native { width: 100%; }
+
+@media (max-width: 480px) {
+  .ff-date-row { flex-direction: column; }
+  .ff-date-row .ff-input, .ff-date-native-wrap { flex-basis: auto; width: 100%; }
+}
+
 @media (max-width: 480px) {
   .ff-question { font-size: 19px; }
   .ff-btn-primary { margin-left: 0; order: 99; width: 100%; }
