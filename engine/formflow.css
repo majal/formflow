@@ -189,6 +189,20 @@
   font-weight: 600;
 }
 .ff-option-emoji { font-size: 20px; line-height: 1; }
+/* Keyboard-shortcut hint (press 1-9 to pick that option) -- only shown
+   on devices with a real pointer+keyboard (desktop); meaningless on a
+   touchscreen with no keyboard to press, so hidden there by default. */
+.ff-option-num {
+  display: none;
+  flex: none;
+  width: 20px; height: 20px; border-radius: 5px;
+  align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 600;
+  background: var(--ff-color-border); color: var(--ff-color-text-muted);
+}
+@media (hover: hover) and (pointer: fine) {
+  .ff-option-num { display: flex; }
+}
 /* Per-option color families -- set colorKey on an option to one of these.
    Unselected options get a soft "whisper" tint so the color grouping is
    visible at a glance, before tapping anything -- selecting steps up to

@@ -58,6 +58,45 @@
     return (step.options || []).find(function (o) { return o.value === value; }) || null;
   }
 
+  // Emoji + label, plus a "1"-"9" key-hint badge -- CSS shows the badge
+  // only on pointer:fine devices (a real mouse/keyboard), since it's
+  // meaningless clutter on a touchscreen where there's no keyboard to
+  // press it on.
+  function optionChildren(opt, index) {
+    var children = [];
+    if (index < 9) children.push(el('span', { class: 'ff-option-num', text: String(index + 1) }));
+    if (opt.emoji) children.push(el('span', { class: 'ff-option-emoji' }, [opt.emoji]));
+    children.push(el('span', {}, [opt.label]));
+    return children;
+  }
+
+  // ---------------------------------------------------------------------
+  // Desktop keyboard shortcuts: press 1-9 to pick that option in the
+  // currently-visible choice step, without having to reach for a mouse
+  // or Tab through every option first (Tab+Enter/Space already works via
+  // native <button> semantics -- this is the extra "fast on desktop"
+  // layer Typeform has). Attached ONCE per engine instance (in the
+  // constructor, on `document`) rather than per-render, so re-rendering
+  // never stacks up duplicate listeners; it re-finds the live
+  // `.ff-options` at keypress time instead of closing over a stale
+  // reference. Ignored while focus is in any text-entry control so
+  // typing a real "1" into a note/date field never gets hijacked.
+  // ---------------------------------------------------------------------
+  function wireOptionNumberShortcuts(root) {
+    document.addEventListener('keydown', function (e) {
+      if (!root.isConnected) return;
+      var activeTag = (document.activeElement && document.activeElement.tagName) || '';
+      if (activeTag === 'INPUT' || activeTag === 'TEXTAREA' || activeTag === 'SELECT') return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      var n = parseInt(e.key, 10);
+      if (!n || n < 1 || n > 9) return;
+      var optionsRow = root.querySelector('.ff-options');
+      if (!optionsRow) return;
+      var buttons = optionsRow.querySelectorAll('.ff-option');
+      if (buttons[n - 1]) { e.preventDefault(); buttons[n - 1].click(); }
+    });
+  }
+
   // A per-option `followUp` wins; otherwise fall back to the older
   // step-level `followUp: { showWhen, question }` shape (plain text only).
   function resolveFollowUp(step, opt) {
@@ -570,6 +609,7 @@
         this.answers[step.id] = { entries: (step.initialEntries || []).slice() };
       }
     }, this);
+    wireOptionNumberShortcuts(this.root);
     this.render();
   }
 
@@ -660,7 +700,7 @@
     var wrap = el('div', { class: 'ff-choice-wrap' });
     var optionsRow = el('div', { class: 'ff-options' });
 
-    (step.options || []).forEach(function (opt) {
+    (step.options || []).forEach(function (opt, i) {
       var selected = current.value === opt.value;
       var attrs = {
         class: 'ff-option' + (selected ? ' ff-option-selected' : ''),
@@ -671,10 +711,7 @@
         },
       };
       if (opt.colorKey) attrs['data-color'] = opt.colorKey;
-      var children = [];
-      if (opt.emoji) children.push(el('span', { class: 'ff-option-emoji' }, [opt.emoji]));
-      children.push(el('span', {}, [opt.label]));
-      optionsRow.appendChild(el('button', attrs, children));
+      optionsRow.appendChild(el('button', attrs, optionChildren(opt, i)));
     });
     wrap.appendChild(optionsRow);
 
@@ -782,6 +819,7 @@
       this.entries[step.id] = (step.initialEntries || []).slice();
     }, this);
 
+    wireOptionNumberShortcuts(this.root);
     this.render();
   }
 
@@ -872,7 +910,7 @@
     if (step.subtext) card.appendChild(el('p', { class: 'ff-subtext', text: interpolate(step.subtext, this.tokens) }));
 
     var optionsRow = el('div', { class: 'ff-options' });
-    (step.options || []).forEach(function (opt) {
+    (step.options || []).forEach(function (opt, i) {
       var selected = current.value === opt.value;
       var attrs = {
         class: 'ff-option' + (selected ? ' ff-option-selected' : ''),
@@ -889,10 +927,7 @@
         },
       };
       if (opt.colorKey) attrs['data-color'] = opt.colorKey;
-      var children = [];
-      if (opt.emoji) children.push(el('span', { class: 'ff-option-emoji' }, [opt.emoji]));
-      children.push(el('span', {}, [opt.label]));
-      optionsRow.appendChild(el('button', attrs, children));
+      optionsRow.appendChild(el('button', attrs, optionChildren(opt, i)));
     });
     card.appendChild(optionsRow);
 
