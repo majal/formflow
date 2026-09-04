@@ -313,8 +313,18 @@
   margin-bottom: 8px;
   background: var(--ff-color-surface);
 }
+.ff-repeat-entry[data-sync="pending"] { border-style: dashed; }
+.ff-repeat-entry[data-sync="error"] { border-color: var(--ff-status-attention-border); }
 .ff-repeat-form { border-top: 1px dashed var(--ff-color-border); padding-top: 16px; }
 .ff-field { margin-bottom: 12px; }
+
+/* ---------- Offline-queue sync badges -- an optional per-row indicator a
+   host page can turn on via opts.rowStatus() / entry._syncStatus. Absent
+   for the common "already synced" case so it never adds visual weight
+   when everything's fine. ---------- */
+.ff-sync-badge { display: inline-flex; margin-left: 6px; font-size: 13px; line-height: 1; vertical-align: -1px; cursor: default; }
+.ff-checklist-row[data-sync="pending"] { border-style: dashed; }
+.ff-checklist-row[data-sync="error"] { border-color: var(--ff-status-attention-border); }
 
 .ff-done { text-align: center; padding: 40px 0; }
 
