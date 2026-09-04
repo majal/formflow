@@ -320,11 +320,41 @@
     return values;
   }
 
+  // Plain muted note (e.g. "Previously noted: ..." fallback text) --
+  // distinct from helpTextLine() below, which is for genuine field
+  // guidance and always gets the visible info-icon treatment.
   function subtext(text) {
-    return el('div', { class: 'ff-subtext', style: 'margin:4px 0 0;font-size:14px;' }, [text]);
+    return el('div', { class: 'ff-subtext-note' }, [text]);
+  }
+  // Field/follow-up guidance -- ALWAYS shown inline, never hidden behind a
+  // hover/click tooltip. This audience is mobile-first (hover doesn't
+  // exist on touch) and the guidance is often decision-critical (eligibility
+  // cutoff dates), not decorative -- hiding it behind an icon-that-must-be-
+  // tapped would cost real information, not just declutter. The icon here
+  // is a always-visible scannability cue (icon-first per this project's own
+  // visual-language guideline), not an affordance to reveal hidden text.
+  function helpTextLine(text) {
+    return el('div', { class: 'ff-help-text' }, [
+      el('span', { class: 'ff-help-icon', 'aria-hidden': 'true' }, ['ℹ️']),
+      el('span', {}, [text]),
+    ]);
+  }
+  // One consistent required/optional marker for every field label in the
+  // engine -- required gets " *" (unchanged, plain), optional gets a
+  // muted, smaller " (optional)" tag. Previously some fields showed no
+  // marker at all when optional (silence == optional, inconsistent with
+  // fields that spelled it out in the label or buried it in a placeholder
+  // instead), and a required plain-text follow-up's label carried no
+  // required marker at all even though the button silently blocked
+  // continuing without it.
+  function fieldLabel(text, required) {
+    if (required) return el('label', { class: 'ff-label', text: text + ' *' });
+    return el('label', { class: 'ff-label' }, [text, el('span', { class: 'ff-optional-tag' }, [' (optional)'])]);
   }
   function errorLine(text) {
-    return el('div', { class: 'ff-date-error', style: (text ? '' : 'display:none;') + 'color:var(--ff-status-attention-text);font-size:14px;margin-top:4px;' }, [text || '']);
+    var line = el('div', { class: 'ff-error-text', text: text || '' });
+    line.hidden = !text;
+    return line;
   }
 
   function buildFollowUpPanel(followUp, initialNote) {
@@ -342,15 +372,12 @@
       var notesInitial = dateMatch ? (dateMatch[2] || '') : '';
       var rawFallback = (!dateMatch && initialNote) ? initialNote : '';
 
-      wrap.appendChild(el('label', { class: 'ff-label', text: followUp.question || 'Date' }));
+      wrap.appendChild(fieldLabel(followUp.question || 'Date', followUp.required));
       var dateField = buildDateField({ initialIso: isoInitial, placeholder: followUp.placeholder });
       wrap.appendChild(dateField.node);
-      var unparsedErr = errorLine("Hmm, we couldn't quite read that date — try something like \"Nov 14, 2026\" or use the picker.");
-      unparsedErr.style.display = 'none';
+      var unparsedErr = errorLine('');
       var ruleErr = errorLine('');
-      ruleErr.style.display = 'none';
       var warnEl = errorLine('');
-      warnEl.style.display = 'none';
       // Precedence, one visible reason at a time: an unparseable typed
       // value is shown alone (the date-rule check below would otherwise
       // run against a stale/empty fallback value and could show an
@@ -358,20 +385,21 @@
       // actually parses does a rule violation get its turn.
       function refreshDateChecks() {
         var unparseable = dateField.isTextUnparseable();
-        unparsedErr.style.display = unparseable ? 'block' : 'none';
+        unparsedErr.textContent = unparseable ? "Hmm, we couldn't quite read that date — try something like \"Nov 14, 2026\" or use the picker." : '';
+        unparsedErr.hidden = !unparseable;
         var v = dateField.getIso();
         var ruleOk = unparseable || !v || checkDateRules(v, followUp.dateRule);
         if (!unparseable && v && !ruleOk) {
           ruleErr.textContent = dateRuleErrorMessage(v, followUp.dateRule);
-          ruleErr.style.display = 'block';
+          ruleErr.hidden = false;
         } else {
-          ruleErr.style.display = 'none';
+          ruleErr.hidden = true;
         }
         if (!unparseable && followUp.warnIfOnOrBefore && v && v <= followUp.warnIfOnOrBefore) {
           warnEl.textContent = followUp.warnMessage || 'Heads up — that date might actually make them qualified. Worth double-checking before saving.';
-          warnEl.style.display = 'block';
+          warnEl.hidden = false;
         } else {
-          warnEl.style.display = 'none';
+          warnEl.hidden = true;
         }
       }
       dateField.textInput.addEventListener('blur', refreshDateChecks);
@@ -380,10 +408,11 @@
       wrap.appendChild(ruleErr);
       wrap.appendChild(warnEl);
       if (rawFallback) wrap.appendChild(subtext('Previously noted: ' + rawFallback));
-      if (followUp.helpText) wrap.appendChild(subtext(followUp.helpText));
+      if (followUp.helpText) wrap.appendChild(helpTextLine(followUp.helpText));
 
-      var notesLabel = el('label', { class: 'ff-label', text: 'Additional notes (optional)', style: 'margin-top:12px;' });
-      var notesInput = el('textarea', { class: 'ff-textarea', rows: '2', placeholder: 'optional' });
+      var notesLabel = fieldLabel('Additional notes', false);
+      notesLabel.style.marginTop = '12px';
+      var notesInput = el('textarea', { class: 'ff-textarea', rows: '2' });
       notesInput.value = notesInitial;
       wrap.appendChild(notesLabel);
       wrap.appendChild(notesInput);
@@ -398,22 +427,36 @@
         return { ok: ok, note: v + (notesVal ? '\nNotes: ' + notesVal : '') };
       });
     } else if (kind === 'fields') {
-      if (followUp.helpText) wrap.appendChild(subtext(followUp.helpText));
+      if (followUp.helpText) wrap.appendChild(helpTextLine(followUp.helpText));
       var parsed = parseFields(followUp.fields, initialNote || '');
       var hasRawFallback = !!initialNote && Object.keys(parsed).length === 0;
       var fieldGetters = [];
       (followUp.fields || []).forEach(function (f) {
         var fWrap = el('div', { class: 'ff-field' });
-        fWrap.appendChild(el('label', { class: 'ff-label', text: f.label + (f.required ? ' *' : '') }));
+        fWrap.appendChild(fieldLabel(f.label, f.required));
         var input = f.type === 'textarea'
           ? el('textarea', { class: 'ff-textarea', rows: '2', placeholder: f.placeholder || '' })
           : el('input', { class: 'ff-input', type: f.type === 'email' ? 'email' : 'text', placeholder: f.placeholder || '' });
         if (parsed[f.id]) input.value = parsed[f.id];
         var fErr = errorLine('');
-        input.addEventListener('input', function () { fErr.style.display = 'none'; });
+        input.addEventListener('input', function () { fErr.hidden = true; });
+        // Real-time feedback on blur for an email-domain field -- matches
+        // buildRepeatForm's equivalent field exactly (found via testing:
+        // this "fields" followUp panel previously validated email format
+        // ONLY when Save was clicked, while the additions repeat-group's
+        // otherwise-identical CO-email field already caught a typo'd
+        // domain the moment you left the field. Two fields asking for the
+        // exact same thing shouldn't behave differently.)
+        if (f.type === 'email' && f.emailDomain) {
+          input.addEventListener('blur', function () {
+            var v = input.value.trim();
+            fErr.textContent = f.errorText || ('Please check ' + f.label.toLowerCase() + '.');
+            fErr.hidden = !(v && !isValidEmailDomain(v, f.emailDomain));
+          });
+        }
         fWrap.appendChild(input);
         fWrap.appendChild(fErr);
-        if (f.helpText) fWrap.appendChild(subtext(f.helpText));
+        if (f.helpText) fWrap.appendChild(helpTextLine(f.helpText));
         wrap.appendChild(fWrap);
         fieldGetters.push(function () {
           var v = input.value.trim();
@@ -422,7 +465,7 @@
           if (ok && v && f.type === 'email' && f.emailDomain) ok = isValidEmailDomain(v, f.emailDomain);
           if (!ok) {
             fErr.textContent = f.errorText || ('Please check ' + f.label.toLowerCase() + '.');
-            fErr.style.display = 'block';
+            fErr.hidden = false;
           }
           return { ok: ok, label: f.label, value: v };
         });
@@ -436,11 +479,11 @@
       });
     } else {
       // Plain text note (default / legacy shape).
-      wrap.appendChild(el('label', { class: 'ff-label', text: followUp.question || 'Add a note' }));
+      wrap.appendChild(fieldLabel(followUp.question || 'Add a note', followUp.required));
       var ta = el('textarea', { class: 'ff-textarea', rows: '3', placeholder: followUp.placeholder || '' });
       ta.value = initialNote || '';
       wrap.appendChild(ta);
-      if (followUp.helpText) wrap.appendChild(subtext(followUp.helpText));
+      if (followUp.helpText) wrap.appendChild(helpTextLine(followUp.helpText));
       evaluators.push(function () {
         var v = ta.value.trim();
         return { ok: !followUp.required || !!v, note: v };
@@ -454,6 +497,37 @@
         return { ok: r.ok, note: r.note };
       },
     };
+  }
+
+  // ---------------------------------------------------------------------
+  // Small Typeform-ish affordances shared across both engines:
+  //  - autofocusIfDesktop: jump straight into the first field of a
+  //    just-opened panel, but ONLY on a real pointer+keyboard device (same
+  //    media-query gate as the 1-9 shortcut badges) -- on a touchscreen
+  //    this would just pop the on-screen keyboard unexpectedly the moment
+  //    a panel appears, which is disruptive rather than helpful for this
+  //    audience's phones.
+  //  - wireEnterSubmit: pressing Enter in a single-line <input> (not a
+  //    textarea, where Enter should stay a newline) clicks the given
+  //    button IF it's already enabled -- safe by construction, since a
+  //    disabled button (incomplete/invalid entry) just no-ops.
+  // ---------------------------------------------------------------------
+  function autofocusIfDesktop(container) {
+    try {
+      if (!window.matchMedia || !window.matchMedia('(hover: hover) and (pointer: fine)').matches) return;
+      var target = container.querySelector('input:not([type=checkbox]), textarea');
+      if (target) target.focus({ preventScroll: true });
+    } catch (e) { /* focus is a nice-to-have, never worth breaking the panel over */ }
+  }
+  function wireEnterSubmit(containerEl, getButton) {
+    containerEl.addEventListener('keydown', function (e) {
+      if (e.key !== 'Enter') return;
+      if ((e.target.tagName || '') !== 'INPUT') return; // textareas keep native newline behavior
+      var btn = getButton();
+      if (!btn || btn.disabled) return;
+      e.preventDefault();
+      btn.click();
+    });
   }
 
   // ---------------------------------------------------------------------
@@ -530,15 +604,13 @@
         var dateField = buildDateField({ placeholder: f.placeholder });
         formFields[f.id] = dateField;
         fieldWrap = el('div', { class: 'ff-field' }, [
-          el('label', { class: 'ff-label', text: f.label + (f.required ? ' *' : '') }),
+          fieldLabel(f.label, f.required),
           dateField.node,
         ]);
-        var unparsedErr = errorLine("Hmm, we couldn't quite read that date — try something like \"Nov 14, 2026\" or use the picker.");
-        unparsedErr.style.display = 'none';
+        var unparsedErr = errorLine('');
         fieldWrap.appendChild(unparsedErr);
         if (f.dateRule) {
           var dateErrEl = errorLine('');
-          dateErrEl.style.display = 'none';
           fieldWrap.appendChild(dateErrEl);
         }
         // Same one-reason-at-a-time precedence as the choice followUp
@@ -547,40 +619,40 @@
         // value and could show a second, unrelated error at once).
         function refreshDateField() {
           var unparseable = dateField.isTextUnparseable();
-          unparsedErr.style.display = unparseable ? 'block' : 'none';
+          unparsedErr.textContent = unparseable ? "Hmm, we couldn't quite read that date — try something like \"Nov 14, 2026\" or use the picker." : '';
+          unparsedErr.hidden = !unparseable;
           if (f.dateRule) {
             var v = dateField.getIso();
             if (!unparseable && v && !checkDateRules(v, f.dateRule)) {
               dateErrEl.textContent = dateRuleErrorMessage(v, f.dateRule);
-              dateErrEl.style.display = 'block';
+              dateErrEl.hidden = false;
             } else {
-              dateErrEl.style.display = 'none';
+              dateErrEl.hidden = true;
             }
           }
           refreshAddButtonState();
         }
         dateField.textInput.addEventListener('blur', refreshDateField);
         dateField.nativeInput.addEventListener('input', refreshDateField);
-        if (f.helpText) fieldWrap.appendChild(subtext(f.helpText));
+        if (f.helpText) fieldWrap.appendChild(helpTextLine(f.helpText));
       } else {
         var input;
         if (f.type === 'textarea') input = el('textarea', { class: 'ff-textarea', rows: '2', placeholder: f.placeholder || '' });
         else input = el('input', { class: 'ff-input', type: (f.type === 'email' ? 'email' : (f.inputType || 'text')), placeholder: f.placeholder || '' });
         formFields[f.id] = input;
         fieldWrap = el('div', { class: 'ff-field' }, [
-          el('label', { class: 'ff-label', text: f.label + (f.required ? ' *' : '') }),
+          fieldLabel(f.label, f.required),
           input,
         ]);
-        if (f.helpText) fieldWrap.appendChild(subtext(f.helpText));
+        if (f.helpText) fieldWrap.appendChild(helpTextLine(f.helpText));
         if (f.type === 'email' && f.emailDomain) {
           var emailErr = errorLine(f.errorText || ('Please check ' + f.label.toLowerCase() + '.'));
-          emailErr.style.display = 'none';
           fieldWrap.appendChild(emailErr);
           input.addEventListener('blur', function () {
             var v = input.value.trim();
-            emailErr.style.display = (v && !isValidEmailDomain(v, f.emailDomain)) ? 'block' : 'none';
+            emailErr.hidden = !(v && !isValidEmailDomain(v, f.emailDomain));
           });
-          input.addEventListener('input', function () { emailErr.style.display = 'none'; });
+          input.addEventListener('input', function () { emailErr.hidden = true; });
         }
         input.addEventListener('input', refreshAddButtonState);
       }
@@ -600,6 +672,11 @@
       onAdd(entry);
     });
     formWrap.appendChild(addBtn);
+    // Pressing Enter in any single-line field submits the entry, but only
+    // ever a no-op until every required field is actually valid (mirrors
+    // Typeform's "press Enter to continue" without risking a half-filled
+    // silent submit).
+    wireEnterSubmit(formWrap, function () { return addBtn; });
     return formWrap;
   }
 
@@ -731,6 +808,7 @@
     if (fu && current.value) {
       panel = buildFollowUpPanel(fu, current.note || '');
       wrap.appendChild(panel.node);
+      autofocusIfDesktop(panel.node);
     }
 
     var continueBtn = el('button', {
@@ -841,11 +919,26 @@
   ChecklistEngine.prototype.openDetail = function (stepId) {
     this.detailStepId = stepId;
     this.render();
+    this.scrollToTop();
   };
 
   ChecklistEngine.prototype.closeDetail = function () {
     this.detailStepId = null;
     this.render();
+    // Deliberately NOT scrolled here -- the intro copy explicitly invites
+    // jumping around the list in any order, so snapping back to the very
+    // top after every single answer would fight anyone working through
+    // entries from partway down (found while implementing: the natural-
+    // seeming symmetric "scroll on close too" turns out to make exactly
+    // the disruptive-jump problem it was meant to avoid, just on the way
+    // back instead of the way in).
+  };
+
+  // A long checklist means a tap far down the list opens a detail card
+  // that starts below the fold -- scroll the freshly-rendered card into
+  // view instead of leaving the reader to notice and scroll manually.
+  ChecklistEngine.prototype.scrollToTop = function () {
+    try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) { window.scrollTo(0, 0); }
   };
 
   ChecklistEngine.prototype.render = function () {
@@ -960,6 +1053,7 @@
     if (fu && current.value) {
       var panel = buildFollowUpPanel(fu, current.note || '');
       card.appendChild(panel.node);
+      autofocusIfDesktop(panel.node);
       var saveBtn = el('button', {
         class: 'ff-btn ff-btn-primary', type: 'button',
         onclick: function () {
@@ -969,6 +1063,13 @@
           self.recordAndMaybeReturn(step, current.value, result.note, { immediate: true });
         },
       }, ['Save & back to list']);
+      // Enter in a single-line field (e.g. a followUp "fields" panel's CO
+      // name/email inputs) saves & returns, same as clicking Save -- a
+      // no-op until panel.evaluate() would actually succeed isn't
+      // knowable without running it, so this wires to the button itself
+      // (which IS reliably enabled/disabled-free here -- Save always
+      // re-validates on click) rather than a stale precomputed flag.
+      wireEnterSubmit(panel.node, function () { return saveBtn; });
       var cancelBtn = el('button', {
         class: 'ff-btn ff-btn-ghost', type: 'button',
         onclick: function () { self.closeDetail(); },
@@ -987,7 +1088,11 @@
     }
     this.render();
     var self = this;
-    setTimeout(function () { self.closeDetail(); }, 220);
+    // Long enough to actually register the selection pop + checkmark
+    // (see .ff-option-selected's animation in formflow.css) as real
+    // confirmation before bouncing back -- 220ms was clipping the
+    // animation on some renders.
+    setTimeout(function () { self.closeDetail(); }, 320);
   };
 
   ChecklistEngine.prototype.renderRepeatCard = function (step) {
