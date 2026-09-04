@@ -942,6 +942,20 @@
     });
     card.appendChild(optionsRow);
 
+    if (current.value) {
+      card.appendChild(el('button', {
+        class: 'ff-btn ff-btn-ghost ff-clear-answer', type: 'button',
+        onclick: function () {
+          // Deliberately does NOT auto-return to the list like a normal
+          // selection does -- after clearing, the person almost always
+          // wants to pick a new answer right away, not get bounced out.
+          self.answers[stepId] = { value: null, note: '' };
+          if (self.opts.onAnswer) self.opts.onAnswer(step.id, null, '');
+          self.render();
+        },
+      }, ['✕ Clear this answer']));
+    }
+
     var fu = resolveFollowUp(step, findOptionMeta(step, current.value));
     if (fu && current.value) {
       var panel = buildFollowUpPanel(fu, current.note || '');
