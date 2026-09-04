@@ -37,6 +37,20 @@
     (children || []).forEach(function (c) {
       if (c) node.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
     });
+    // Every textarea auto-grows to fit its content as the user types --
+    // a fixed 2-3 row box either clips a longer note or wastes space
+    // for a short one; growing removes the choice entirely. Applied
+    // centrally here so every textarea in the engine gets it for free.
+    if (tag === 'textarea') {
+      node.style.overflow = 'hidden';
+      node.style.resize = 'none';
+      var grow = function () {
+        node.style.height = 'auto';
+        node.style.height = node.scrollHeight + 'px';
+      };
+      node.addEventListener('input', grow);
+      setTimeout(grow, 0); // after any initial .value is set by the caller
+    }
     return node;
   }
 
@@ -83,15 +97,22 @@
     var list = Array.isArray(rules) ? rules : [rules];
     return list.every(function (r) { return checkDateRule(isoDate, r); });
   }
-  function dateRuleMessages(rules) {
+  function dateRuleMessageFor(rule) {
+    if (rule === 'saturday') return 'PSS classes conclude on a Saturday — please double-check this date.';
+    if (rule === 'first-of-month') return 'Pioneer service always starts on the 1st of a month — please double-check this date.';
+    if (rule === 'not-future') return "This date can't be in the future — please double-check this date.";
+    return 'Please double-check this date.';
+  }
+  // Only the FIRST actually-failing rule's message, not every rule the
+  // field could theoretically enforce -- a date can fail "not a
+  // Saturday" without also being "in the future", and showing both at
+  // once makes the reader parse out which part actually applies to
+  // them. Needs the real entered date (not just the rule list) to know
+  // which one(s) actually failed.
+  function dateRuleErrorMessage(isoDate, rules) {
     var list = Array.isArray(rules) ? rules : (rules ? [rules] : []);
-    var msgs = [];
-    list.forEach(function (r) {
-      if (r === 'saturday') msgs.push('PSS classes conclude on a Saturday');
-      else if (r === 'first-of-month') msgs.push('pioneer service always starts on the 1st of a month');
-      else if (r === 'not-future') msgs.push("this date can't be in the future");
-    });
-    return (msgs.length ? msgs.join(' and ') + ' — ' : '') + 'please double-check this date.';
+    var failing = list.filter(function (r) { return !checkDateRule(isoDate, r); });
+    return failing.length ? dateRuleMessageFor(failing[0]) : '';
   }
 
   // ---------------------------------------------------------------------
@@ -287,16 +308,27 @@
       wrap.appendChild(dateField.node);
       var unparsedErr = errorLine("Hmm, we couldn't quite read that date — try something like \"Nov 14, 2026\" or use the picker.");
       unparsedErr.style.display = 'none';
-      var ruleErr = errorLine(dateRuleMessages(followUp.dateRule));
+      var ruleErr = errorLine('');
       ruleErr.style.display = 'none';
       var warnEl = errorLine('');
       warnEl.style.display = 'none';
+      // Precedence, one visible reason at a time: an unparseable typed
+      // value is shown alone (the date-rule check below would otherwise
+      // run against a stale/empty fallback value and could show an
+      // unrelated second error at the same time); only once the date
+      // actually parses does a rule violation get its turn.
       function refreshDateChecks() {
+        var unparseable = dateField.isTextUnparseable();
+        unparsedErr.style.display = unparseable ? 'block' : 'none';
         var v = dateField.getIso();
-        unparsedErr.style.display = dateField.isTextUnparseable() ? 'block' : 'none';
-        var ruleOk = !v || checkDateRules(v, followUp.dateRule);
-        ruleErr.style.display = (v && !ruleOk) ? 'block' : 'none';
-        if (followUp.warnIfOnOrBefore && v && v <= followUp.warnIfOnOrBefore) {
+        var ruleOk = unparseable || !v || checkDateRules(v, followUp.dateRule);
+        if (!unparseable && v && !ruleOk) {
+          ruleErr.textContent = dateRuleErrorMessage(v, followUp.dateRule);
+          ruleErr.style.display = 'block';
+        } else {
+          ruleErr.style.display = 'none';
+        }
+        if (!unparseable && followUp.warnIfOnOrBefore && v && v <= followUp.warnIfOnOrBefore) {
           warnEl.textContent = followUp.warnMessage || 'Heads up — that date might actually make them qualified. Worth double-checking before saving.';
           warnEl.style.display = 'block';
         } else {
@@ -465,15 +497,25 @@
         unparsedErr.style.display = 'none';
         fieldWrap.appendChild(unparsedErr);
         if (f.dateRule) {
-          var dateErrEl = errorLine(dateRuleMessages(f.dateRule));
+          var dateErrEl = errorLine('');
           dateErrEl.style.display = 'none';
           fieldWrap.appendChild(dateErrEl);
         }
+        // Same one-reason-at-a-time precedence as the choice followUp
+        // date field: an unparseable typed value suppresses the rule
+        // check (which would otherwise run against a stale fallback
+        // value and could show a second, unrelated error at once).
         function refreshDateField() {
-          unparsedErr.style.display = dateField.isTextUnparseable() ? 'block' : 'none';
+          var unparseable = dateField.isTextUnparseable();
+          unparsedErr.style.display = unparseable ? 'block' : 'none';
           if (f.dateRule) {
             var v = dateField.getIso();
-            dateErrEl.style.display = (v && !checkDateRules(v, f.dateRule)) ? 'block' : 'none';
+            if (!unparseable && v && !checkDateRules(v, f.dateRule)) {
+              dateErrEl.textContent = dateRuleErrorMessage(v, f.dateRule);
+              dateErrEl.style.display = 'block';
+            } else {
+              dateErrEl.style.display = 'none';
+            }
           }
           refreshAddButtonState();
         }
