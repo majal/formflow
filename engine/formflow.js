@@ -356,6 +356,15 @@
     line.hidden = !text;
     return line;
   }
+  // Small per-row indicator for a host-reported offline-queue state.
+  // Returns null (renders nothing) for 'synced'/undefined -- the common
+  // case shouldn't carry visual weight.
+  function syncBadge(status) {
+    if (!status || status === 'synced') return null;
+    var pending = status === 'pending';
+    var title = pending ? 'Saved on this device — syncing…' : "Couldn't save — tap to retry";
+    return el('span', { class: 'ff-sync-badge ff-sync-' + status, title: title, 'aria-label': title }, [pending ? '🕓' : '⚠️']);
+  }
 
   function buildFollowUpPanel(followUp, initialNote) {
     var kind = followUp.type || 'text';
@@ -537,8 +546,13 @@
   function buildRepeatList(entries, onRemove, iconRemove) {
     var list = el('div', { class: 'ff-repeat-list' });
     entries.forEach(function (entry, i) {
-      var row = el('div', { class: 'ff-repeat-entry' });
-      row.appendChild(el('div', { class: 'ff-repeat-summary', text: (entry.name || '(unnamed)') }));
+      // A host page (e.g. an offline queue) may stamp `_syncStatus`
+      // directly onto the SAME entry object it was handed via onAnswer --
+      // read here, purely for display; never sent over the wire (the host
+      // is responsible for stripping it from any network payload before
+      // it snapshots the entry for sending).
+      var row = el('div', { class: 'ff-repeat-entry', 'data-sync': entry._syncStatus || '' });
+      row.appendChild(el('div', { class: 'ff-repeat-summary' }, [entry.name || '(unnamed)', syncBadge(entry._syncStatus)]));
       row.appendChild(iconRemove
         ? el('button', { class: 'ff-btn-icon', type: 'button', title: 'Remove', 'aria-label': 'Remove', onclick: function () { onRemove(i); } }, ['🗑️'])
         : el('button', { class: 'ff-btn ff-btn-ghost ff-btn-small', type: 'button', onclick: function () { onRemove(i); } }, ['Remove']));
@@ -981,13 +995,21 @@
     this.itemSteps.forEach(function (step) {
       var current = self.answers[step.id];
       var optMeta = current.value ? findOptionMeta(step, current.value) : null;
+      // opts.rowStatus is an optional host-supplied hook: (stepId) =>
+      // 'pending' | 'error' | undefined. formflow itself has no concept
+      // of network state -- this just gives the host somewhere to report
+      // it (e.g. an offline-queue banner) without formflow needing to
+      // know anything about how or where answers are actually persisted.
+      var syncStatus = self.opts.rowStatus ? self.opts.rowStatus(step.id) : null;
       var rowAttrs = { class: 'ff-checklist-row', type: 'button', onclick: function () { self.openDetail(step.id); } };
       if (optMeta && optMeta.colorKey) rowAttrs['data-color'] = optMeta.colorKey;
+      if (syncStatus) rowAttrs['data-sync'] = syncStatus;
       var row = el('button', rowAttrs, [
         el('span', { class: 'ff-checklist-status-dot' }),
         el('span', { class: 'ff-checklist-name' }, [interpolate(step.question, Object.assign({}, self.tokens, step.tokens || {}))]),
         optMeta ? el('span', { class: 'ff-checklist-emoji' }, [optMeta.emoji || '']) : null,
         el('span', { class: 'ff-checklist-answer', text: optMeta ? optMeta.label : 'Tap to answer' }),
+        syncBadge(syncStatus),
         el('span', { class: 'ff-checklist-chevron', text: '›' }),
       ]);
       rows.appendChild(row);
@@ -1012,6 +1034,10 @@
     }, ['‹ Back to list']));
     card.appendChild(el('h2', { class: 'ff-question' }, [interpolate(step.question, Object.assign({}, this.tokens, step.tokens || {}))]));
     if (step.subtext) card.appendChild(el('p', { class: 'ff-subtext', text: interpolate(step.subtext, this.tokens) }));
+
+    var detailSyncStatus = this.opts.rowStatus ? this.opts.rowStatus(stepId) : null;
+    if (detailSyncStatus === 'pending') card.appendChild(helpTextLine('Saved on this device — will sync automatically once you\'re back online.'));
+    else if (detailSyncStatus === 'error') card.appendChild(errorLine("This answer couldn't be saved — it'll keep retrying automatically, or check your connection."));
 
     var optionsRow = el('div', { class: 'ff-options' });
     (step.options || []).forEach(function (opt, i) {
