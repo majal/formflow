@@ -9,6 +9,13 @@
    attribute set). */
 
 :root {
+  /* Single font-stack source of truth -- a host page should reference this
+     same variable (it's set before any host <style> block that comes after
+     this stylesheet's <link>) rather than hand-typing its own stack, so
+     nothing outside .ff-root can silently fall back to the browser's
+     default serif font the way an unstyled element otherwise would. */
+  --ff-font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+
   --ff-color-bg: #fafafa;
   --ff-color-surface: #ffffff;
   --ff-color-text: #1a1a1a;
@@ -132,8 +139,8 @@
   max-width: 640px;
   margin: 0 auto;
   padding: 16px;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  font-size: 16px;
+  font-family: var(--ff-font-sans);
+  font-size: 17px;
   line-height: 1.45;
   color: var(--ff-color-text);
   background: var(--ff-color-bg);
@@ -152,7 +159,7 @@
   transition: width 0.25s ease;
 }
 .ff-progress-label {
-  font-size: 14px;
+  font-size: 15px;
   color: var(--ff-color-text-muted);
   margin: -12px 0 16px;
   text-align: right;
@@ -188,6 +195,20 @@
   background: var(--ff-color-primary-bg);
   font-weight: 600;
   border-width: 3px;
+  /* Plays every time this element mounts freshly selected -- render()
+     always rebuilds the DOM node, so no extra JS is needed to "replay"
+     this on each new selection; it's a fresh element every time. A quick
+     confirm-then-settle pop, the same kind of tactile feedback Typeform
+     gives before advancing. Respects reduced-motion below. */
+  animation: ff-option-confirm 260ms ease;
+}
+@keyframes ff-option-confirm {
+  0% { transform: scale(0.97); }
+  55% { transform: scale(1.015); }
+  100% { transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ff-option-selected { animation: none; }
 }
 /* A checkmark on the selected option is a color-independent "this one's
    picked" signal -- needed because the neutral/gray color family's
@@ -232,7 +253,23 @@
 .ff-option[data-color="attention"].ff-option-selected { background: var(--ff-status-attention-bg); border-color: var(--ff-status-attention-border); color: var(--ff-status-attention-text); }
 
 .ff-followup { margin: 12px 0 20px; }
-.ff-label { display: block; font-size: 15px; color: var(--ff-color-text-muted); margin-bottom: 6px; }
+.ff-label { display: block; font-size: 16px; color: var(--ff-color-text-muted); margin-bottom: 6px; }
+/* Unified required/optional marker -- every field says one or the other,
+   never silence, so "did they forget this field is optional?" is never a
+   question. Muted + slightly smaller than the label itself so it reads as
+   a tag, not part of the field's actual name. */
+.ff-optional-tag { color: var(--ff-color-text-muted); font-weight: 400; font-size: 0.85em; }
+/* Field/follow-up guidance -- always visible (see helpTextLine() in
+   formflow.js for why this is never a hover/click tooltip). Bumped from
+   the plain-subtext size since this often carries decision-critical
+   detail (eligibility cutoff dates), not decoration. */
+.ff-help-text { display: flex; align-items: flex-start; gap: 6px; margin: 6px 0 0; font-size: 15px; line-height: 1.4; color: var(--ff-color-text-muted); }
+.ff-help-icon { flex: none; line-height: 1.4; }
+/* Plain muted note (e.g. "Previously noted: ..."), no icon -- distinct
+   from .ff-help-text above. */
+.ff-subtext-note { margin: 4px 0 0; font-size: 15px; color: var(--ff-color-text-muted); }
+.ff-error-text { color: var(--ff-status-attention-text); font-size: 15px; margin-top: 4px; }
+.ff-error-text[hidden] { display: none; }
 .ff-textarea, .ff-input {
   width: 100%;
   box-sizing: border-box;
@@ -252,8 +289,8 @@
 .ff-btn-primary { background: var(--ff-color-primary); color: var(--ff-color-primary-contrast); margin-left: auto; }
 .ff-btn-ghost { background: transparent; color: var(--ff-color-text-muted); border: 2px solid var(--ff-color-border); }
 .ff-btn-secondary { background: var(--ff-color-primary-bg); color: var(--ff-color-primary); border: 2px solid var(--ff-color-primary-border); }
-.ff-clear-answer { margin-top: 2px; margin-bottom: 16px; font-size: 14px; padding: 8px 16px; }
-.ff-btn-small { padding: 6px 12px; font-size: 14px; }
+.ff-clear-answer { margin-top: 2px; margin-bottom: 16px; font-size: 15px; padding: 8px 16px; }
+.ff-btn-small { padding: 6px 12px; font-size: 15px; }
 .ff-btn-icon { padding: 8px 10px; font-size: 16px; line-height: 1; background: transparent; border: none; cursor: pointer; border-radius: 8px; }
 .ff-btn-icon:hover { background: var(--ff-status-attention-bg); }
 /* Disabled state, applied to any .ff-btn -- clearly greyed and inert so
@@ -262,7 +299,7 @@
 .ff-btn:disabled { opacity: 0.4; cursor: not-allowed; filter: grayscale(30%); }
 .ff-btn-secondary:disabled { background: var(--ff-color-surface); color: var(--ff-color-text-muted); border-color: var(--ff-color-border); }
 
-.ff-field-toggle { display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 15px; padding: 4px 0; }
+.ff-field-toggle { display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 16px; padding: 4px 0; }
 .ff-field-toggle input[type="checkbox"] { width: 19px; height: 19px; flex: none; accent-color: var(--ff-color-primary); }
 
 .ff-repeat-list { margin-bottom: 16px; }
@@ -314,7 +351,7 @@
 .ff-checklist-row[data-color="neutral"] .ff-checklist-status-dot { background: var(--ff-status-neutral-border); border-color: var(--ff-status-neutral-border); }
 .ff-checklist-row[data-color="attention"] .ff-checklist-status-dot { background: var(--ff-status-attention-border); border-color: var(--ff-status-attention-border); }
 .ff-checklist-name { flex: 1; font-weight: 500; }
-.ff-checklist-answer { font-size: 14px; color: var(--ff-color-text-muted); }
+.ff-checklist-answer { font-size: 15px; color: var(--ff-color-text-muted); }
 .ff-checklist-emoji { font-size: 18px; flex: none; }
 .ff-checklist-chevron { color: var(--ff-color-text-muted); flex: none; }
 
