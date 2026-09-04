@@ -506,6 +506,7 @@
         var v = fieldValue(f);
         if (f.required && !v.trim()) return false;
         if (f.type === 'date' && f.dateRule && v && !checkDateRules(v, f.dateRule)) return false;
+        if (f.type === 'email' && f.emailDomain && v && !isValidEmailDomain(v, f.emailDomain)) return false;
         return true;
       });
     }
@@ -571,6 +572,16 @@
           input,
         ]);
         if (f.helpText) fieldWrap.appendChild(subtext(f.helpText));
+        if (f.type === 'email' && f.emailDomain) {
+          var emailErr = errorLine(f.errorText || ('Please check ' + f.label.toLowerCase() + '.'));
+          emailErr.style.display = 'none';
+          fieldWrap.appendChild(emailErr);
+          input.addEventListener('blur', function () {
+            var v = input.value.trim();
+            emailErr.style.display = (v && !isValidEmailDomain(v, f.emailDomain)) ? 'block' : 'none';
+          });
+          input.addEventListener('input', function () { emailErr.style.display = 'none'; });
+        }
         input.addEventListener('input', refreshAddButtonState);
       }
       fieldWraps[f.id] = fieldWrap;
