@@ -301,11 +301,11 @@
    accessibility tree) but visually hidden -- the icon triggers it via
    .showPicker(), never a second visible control. ---------- */
 .ff-date-input-wrap { position: relative; }
-.ff-date-text { width: 100%; box-sizing: border-box; padding-right: 44px; }
+.ff-date-text { width: 100%; box-sizing: border-box; padding-right: 52px; }
 .ff-date-icon-btn {
-  position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
-  width: 34px; height: 34px; display: flex; align-items: center; justify-content: center;
-  border: none; background: transparent; border-radius: 8px; cursor: pointer; font-size: 18px;
+  position: absolute; right: 3px; top: 50%; transform: translateY(-50%);
+  width: 44px; height: 44px; display: flex; align-items: center; justify-content: center;
+  border: none; background: transparent; border-radius: 8px; cursor: pointer; font-size: 19px;
   color: var(--ff-color-text-muted);
 }
 .ff-date-icon-btn:hover { background: var(--ff-color-primary-bg); }

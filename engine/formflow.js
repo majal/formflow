@@ -782,10 +782,16 @@
     }
     wrap.appendChild(header);
 
-    wrap.appendChild(el('div', { class: 'ff-progress' }, [
-      el('div', { class: 'ff-progress-fill', style: 'width:' + Math.round(fraction * 100) + '%' }),
-    ]));
-    wrap.appendChild(el('div', { class: 'ff-progress-label', text: done + ' of ' + total + ' answered' }));
+    // A "0 of 0 answered" progress bar is meaningless noise when there's
+    // no checklist at all (e.g. a Group/Pregroup session, which only
+    // ever has the additions form, never Bethel List items) -- skip it
+    // rather than show an empty bar and a confusing count.
+    if (total > 0) {
+      wrap.appendChild(el('div', { class: 'ff-progress' }, [
+        el('div', { class: 'ff-progress-fill', style: 'width:' + Math.round(fraction * 100) + '%' }),
+      ]));
+      wrap.appendChild(el('div', { class: 'ff-progress-label', text: done + ' of ' + total + ' answered' }));
+    }
 
     var rows = el('div', { class: 'ff-checklist-rows' });
     this.itemSteps.forEach(function (step) {
