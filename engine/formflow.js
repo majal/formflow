@@ -159,18 +159,34 @@
   }
 
   var dateFieldSeq = 0;
-  /** A hybrid date field: type-and-reformat text input + a real native
-   * <input type="date"> alongside it. opts: { initialIso, placeholder }.
+  /** A hybrid date field: ONE visible type-and-reformat text input with a
+   * calendar icon button on the right. Tapping/clicking the icon opens
+   * the browser's real native date picker (via a same-shape, visually-
+   * hidden <input type="date"> that the icon triggers with
+   * `.showPicker()`, falling back to a plain `.focus()` on older
+   * browsers) -- same control, same interaction, on both desktop and
+   * mobile, instead of two separate visible fields.
+   * opts: { initialIso, placeholder }.
    * Returns { node, getIso(), isTextUnparseable(), textInput, nativeInput }. */
   function buildDateField(opts) {
     opts = opts || {};
     var id = 'ff-date-' + (dateFieldSeq++);
     var currentIso = /^\d{4}-\d{2}-\d{2}$/.test(opts.initialIso || '') ? opts.initialIso : '';
     var textInput = el('input', {
-      class: 'ff-input', type: 'text', inputmode: 'text', autocomplete: 'off',
+      class: 'ff-input ff-date-text', type: 'text', inputmode: 'text', autocomplete: 'off',
       placeholder: opts.placeholder || 'e.g. Nov 14, 2026',
     });
-    var nativeInput = el('input', { class: 'ff-input ff-date-native', type: 'date', id: id });
+    // Kept in the DOM and genuinely focusable (not display:none) so
+    // .showPicker()/.focus() still work and it stays in the
+    // accessibility tree -- just not painted, since the text input is
+    // the one visible control.
+    var nativeInput = el('input', { class: 'ff-date-native-hidden', type: 'date', id: id, tabindex: '-1', 'aria-hidden': 'true' });
+    var iconBtn = el('button', {
+      class: 'ff-date-icon-btn', type: 'button', 'aria-label': 'Pick a date',
+      onclick: function () {
+        try { nativeInput.showPicker(); } catch (e) { nativeInput.focus(); }
+      },
+    }, ['📅']);
     if (currentIso) {
       textInput.value = formatFriendlyDate(currentIso);
       nativeInput.value = currentIso;
@@ -190,13 +206,7 @@
       if (currentIso) textInput.value = formatFriendlyDate(currentIso);
     });
     var wrap = el('div', { class: 'ff-date-field' }, [
-      el('div', { class: 'ff-date-row' }, [
-        textInput,
-        el('label', { class: 'ff-date-native-wrap', for: id }, [
-          el('span', { class: 'ff-date-native-label', text: 'or pick:' }),
-          nativeInput,
-        ]),
-      ]),
+      el('div', { class: 'ff-date-input-wrap' }, [textInput, iconBtn, nativeInput]),
     ]);
     return {
       node: wrap,
@@ -251,10 +261,10 @@
   }
 
   function subtext(text) {
-    return el('div', { class: 'ff-subtext', style: 'margin:4px 0 0;font-size:13px;' }, [text]);
+    return el('div', { class: 'ff-subtext', style: 'margin:4px 0 0;font-size:14px;' }, [text]);
   }
   function errorLine(text) {
-    return el('div', { class: 'ff-date-error', style: (text ? '' : 'display:none;') + 'color:var(--ff-status-attention-text);font-size:13px;margin-top:4px;' }, [text || '']);
+    return el('div', { class: 'ff-date-error', style: (text ? '' : 'display:none;') + 'color:var(--ff-status-attention-text);font-size:14px;margin-top:4px;' }, [text || '']);
   }
 
   function buildFollowUpPanel(followUp, initialNote) {
@@ -273,7 +283,7 @@
       var rawFallback = (!dateMatch && initialNote) ? initialNote : '';
 
       wrap.appendChild(el('label', { class: 'ff-label', text: followUp.question || 'Date' }));
-      var dateField = buildDateField({ initialIso: isoInitial });
+      var dateField = buildDateField({ initialIso: isoInitial, placeholder: followUp.placeholder });
       wrap.appendChild(dateField.node);
       var unparsedErr = errorLine("Hmm, we couldn't quite read that date — try something like \"Nov 14, 2026\" or use the picker.");
       unparsedErr.style.display = 'none';

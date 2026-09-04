@@ -133,6 +133,8 @@
   margin: 0 auto;
   padding: 16px;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.45;
   color: var(--ff-color-text);
   background: var(--ff-color-bg);
 }
@@ -150,7 +152,7 @@
   transition: width 0.25s ease;
 }
 .ff-progress-label {
-  font-size: 13px;
+  font-size: 14px;
   color: var(--ff-color-text-muted);
   margin: -12px 0 16px;
   text-align: right;
@@ -162,8 +164,8 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
-.ff-question { font-size: 22px; line-height: 1.35; margin: 0 0 8px; }
-.ff-subtext { font-size: 15px; color: var(--ff-color-text-muted); margin: 0 0 20px; }
+.ff-question { font-size: 23px; line-height: 1.35; margin: 0 0 8px; }
+.ff-subtext { font-size: 16px; color: var(--ff-color-text-muted); margin: 0 0 20px; }
 
 .ff-options { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }
 .ff-option {
@@ -201,7 +203,7 @@
 .ff-option[data-color="attention"].ff-option-selected { background: var(--ff-status-attention-bg); border-color: var(--ff-status-attention-border); color: var(--ff-status-attention-text); }
 
 .ff-followup { margin: 12px 0 20px; }
-.ff-label { display: block; font-size: 14px; color: var(--ff-color-text-muted); margin-bottom: 6px; }
+.ff-label { display: block; font-size: 15px; color: var(--ff-color-text-muted); margin-bottom: 6px; }
 .ff-textarea, .ff-input {
   width: 100%;
   box-sizing: border-box;
@@ -221,7 +223,7 @@
 .ff-btn-primary { background: var(--ff-color-primary); color: var(--ff-color-primary-contrast); margin-left: auto; }
 .ff-btn-ghost { background: transparent; color: var(--ff-color-text-muted); border: 2px solid var(--ff-color-border); }
 .ff-btn-secondary { background: var(--ff-color-primary-bg); color: var(--ff-color-primary); border: 2px solid var(--ff-color-primary-border); }
-.ff-btn-small { padding: 6px 12px; font-size: 13px; }
+.ff-btn-small { padding: 6px 12px; font-size: 14px; }
 .ff-btn-icon { padding: 8px 10px; font-size: 16px; line-height: 1; background: transparent; border: none; cursor: pointer; border-radius: 8px; }
 .ff-btn-icon:hover { background: var(--ff-status-attention-bg); }
 /* Disabled state, applied to any .ff-btn -- clearly greyed and inert so
@@ -252,7 +254,7 @@
 /* ---------- Checklist / overview mode ---------- */
 .ff-checklist-header { margin-bottom: 18px; }
 .ff-checklist-title { font-size: 22px; margin: 0 0 6px; }
-.ff-checklist-subtext { font-size: 15px; color: var(--ff-color-text-muted); margin: 0 0 14px; }
+.ff-checklist-subtext { font-size: 16px; color: var(--ff-color-text-muted); margin: 0 0 14px; }
 
 .ff-checklist-rows { display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px; }
 .ff-checklist-row {
@@ -282,34 +284,34 @@
 .ff-checklist-row[data-color="neutral"] .ff-checklist-status-dot { background: var(--ff-status-neutral-border); border-color: var(--ff-status-neutral-border); }
 .ff-checklist-row[data-color="attention"] .ff-checklist-status-dot { background: var(--ff-status-attention-border); border-color: var(--ff-status-attention-border); }
 .ff-checklist-name { flex: 1; font-weight: 500; }
-.ff-checklist-answer { font-size: 13px; color: var(--ff-color-text-muted); }
+.ff-checklist-answer { font-size: 14px; color: var(--ff-color-text-muted); }
 .ff-checklist-emoji { font-size: 18px; flex: none; }
 .ff-checklist-chevron { color: var(--ff-color-text-muted); flex: none; }
 
 .ff-checklist-detail-back {
   background: none; border: none; color: var(--ff-color-primary);
-  font-size: 15px; cursor: pointer; padding: 4px 0 16px; font-family: inherit;
+  font-size: 16px; cursor: pointer; padding: 4px 0 16px; font-family: inherit;
 }
 
-/* ---------- Hybrid date field: type-and-reformat text + a real native
-   picker alongside it. See buildDateField() -- typing is the primary,
-   faster path once you know the format ("Nov 14, 2026"); the native
-   input is a genuine, fully-accessible "or pick one" alternative, not a
-   hidden trick. Side-by-side on room to spare, stacked on narrow/mobile
-   screens where a picker crammed next to a text field gets too tight to
-   tap accurately. ---------- */
-.ff-date-row { display: flex; gap: 10px; align-items: flex-start; flex-wrap: wrap; }
-.ff-date-row .ff-input { flex: 1 1 180px; min-width: 0; }
-.ff-date-native-wrap {
-  display: flex; flex-direction: column; gap: 4px; flex: 1 1 160px; min-width: 0;
-  cursor: pointer;
+/* ---------- Hybrid date field: ONE text input (type-and-reformat,
+   "Nov 14, 2026") with a calendar icon on the right that opens the
+   browser's real native date picker -- same single control, same
+   interaction, on desktop and mobile. See buildDateField(). The native
+   <input type="date"> stays in the DOM (genuinely focusable, in the
+   accessibility tree) but visually hidden -- the icon triggers it via
+   .showPicker(), never a second visible control. ---------- */
+.ff-date-input-wrap { position: relative; }
+.ff-date-text { width: 100%; box-sizing: border-box; padding-right: 44px; }
+.ff-date-icon-btn {
+  position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+  width: 34px; height: 34px; display: flex; align-items: center; justify-content: center;
+  border: none; background: transparent; border-radius: 8px; cursor: pointer; font-size: 18px;
+  color: var(--ff-color-text-muted);
 }
-.ff-date-native-label { font-size: 12px; color: var(--ff-color-text-muted); }
-.ff-date-native { width: 100%; }
-
-@media (max-width: 480px) {
-  .ff-date-row { flex-direction: column; }
-  .ff-date-row .ff-input, .ff-date-native-wrap { flex-basis: auto; width: 100%; }
+.ff-date-icon-btn:hover { background: var(--ff-color-primary-bg); }
+.ff-date-native-hidden {
+  position: absolute; opacity: 0; width: 1px; height: 1px; overflow: hidden;
+  pointer-events: none; border: none; padding: 0;
 }
 
 @media (max-width: 480px) {
