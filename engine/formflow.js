@@ -292,6 +292,19 @@
     return value.toLowerCase().slice(-(domain.length + 1)) === ('@' + domain.toLowerCase());
   }
 
+  // A real middle name is virtually never a single letter (with or without
+  // a trailing period) -- "M", "M.", or a run of such tokens ("M.J.") reads
+  // as an initial, not the full name a field with `notInitial: true` (the
+  // survey's Middle name field) requires. A genuine short name with NO
+  // period ("Sy", "Go", "Uy") has 2+ letters in at least one token, so it
+  // never matches this and is never falsely rejected.
+  function looksLikeInitial(value) {
+    var v = (value || '').trim();
+    if (!v) return false;
+    var tokens = v.split(/\s+/).filter(Boolean);
+    return tokens.every(function (t) { return /^[A-Za-z]\.?$/.test(t); });
+  }
+
   // ---------------------------------------------------------------------
   // Follow-up panel builder — shared by the linear engine and the
   // checklist engine. Renders whatever the follow-up needs (a plain note,
@@ -589,12 +602,18 @@
     function isEntryValid() {
       return (step.fields || []).every(function (f) {
         if (f.type === 'toggle') return true;
+        if (f.type === 'accommodation-group') {
+          var acc = formFields[f.id];
+          if (!acc.checkbox.checked) return true;
+          return !!(acc.select.value || acc.newGroupInput.value.trim());
+        }
         if (!isVisible(f)) return true;
         if (f.type === 'date' && formFields[f.id].isTextUnparseable()) return false;
         var v = fieldValue(f);
         if (f.required && !v.trim()) return false;
         if (f.type === 'date' && f.dateRule && v && !checkDateRules(v, f.dateRule)) return false;
         if (f.type === 'email' && f.emailDomain && v && !isValidEmailDomain(v, f.emailDomain)) return false;
+        if (f.notInitial && v && looksLikeInitial(v)) return false;
         return true;
       });
     }
@@ -649,6 +668,53 @@
         dateField.textInput.addEventListener('blur', refreshDateField);
         dateField.nativeInput.addEventListener('input', refreshDateField);
         if (f.helpText) fieldWrap.appendChild(helpTextLine(f.helpText));
+      } else if (f.type === 'accommodation-group') {
+        // Compound field: a checkbox reveals "join an existing group" (a
+        // select, pre-populated server-side with every group already on
+        // this survey so an elder sees who's already in one -- see
+        // worker.v2.ts's GET /survey/:token) OR "start a new group" (a
+        // name field), plus an always-optional note explaining why
+        // (couple / minor joining a parent / other S-256 special need).
+        // Whoever assigns rooms reads the group + note later -- this
+        // field only collects the request, it never judges it.
+        var accCheckbox = el('input', { type: 'checkbox' });
+        var groupOptions = [{ value: '', label: (f.groups || []).length ? '+ Start a new group' : '+ Start a new group (none yet)' }]
+          .concat((f.groups || []).map(function (g) { return { value: String(g.id), label: g.label }; }));
+        var accSelect = el('select', { class: 'ff-input' },
+          groupOptions.map(function (o) { return el('option', { value: o.value }, [o.label]); }));
+        var accNewGroupInput = el('input', { class: 'ff-input', type: 'text', placeholder: 'Name this group, e.g. "Cruz family"' });
+        var accNote = el('textarea', { class: 'ff-textarea', rows: '2', placeholder: 'Why? e.g. married couple, minor joining a parent, other need' });
+        var accRevealWrap = el('div', { class: 'ff-field' }, [
+          fieldLabel('Group', true),
+          accSelect,
+          accNewGroupInput,
+          fieldLabel('Note (optional)', false),
+          accNote,
+        ]);
+        accRevealWrap.hidden = true;
+        function refreshAccVisibility() {
+          accRevealWrap.hidden = !accCheckbox.checked;
+          accNewGroupInput.style.display = accSelect.value === '' ? '' : 'none';
+          refreshAddButtonState();
+        }
+        accCheckbox.addEventListener('change', refreshAccVisibility);
+        accSelect.addEventListener('change', refreshAccVisibility);
+        accNewGroupInput.addEventListener('input', refreshAddButtonState);
+        formFields[f.id] = { checkbox: accCheckbox, select: accSelect, newGroupInput: accNewGroupInput, note: accNote };
+        fieldWrap = el('div', { class: 'ff-field ff-field-accommodation' }, [
+          el('label', { class: 'ff-field-toggle' }, [accCheckbox, el('span', {}, [f.label])]),
+        ]);
+        if (f.helpText) fieldWrap.appendChild(helpTextLine(f.helpText));
+        fieldWrap.appendChild(accRevealWrap);
+        refreshAccVisibility();
+      } else if (f.type === 'select') {
+        var select = el('select', { class: 'ff-input' },
+          (f.options || []).map(function (o) { return el('option', { value: o.value }, [o.label]); }));
+        if (f.placeholder) select.insertBefore(el('option', { value: '', disabled: true, selected: true }, [f.placeholder]), select.firstChild);
+        formFields[f.id] = select;
+        fieldWrap = el('div', { class: 'ff-field' }, [fieldLabel(f.label, f.required), select]);
+        if (f.helpText) fieldWrap.appendChild(helpTextLine(f.helpText));
+        select.addEventListener('change', refreshAddButtonState);
       } else {
         var input;
         if (f.type === 'textarea') input = el('textarea', { class: 'ff-textarea', rows: '2', placeholder: f.placeholder || '' });
@@ -668,6 +734,15 @@
           });
           input.addEventListener('input', function () { emailErr.hidden = true; });
         }
+        if (f.notInitial) {
+          var initialErr = errorLine(f.errorText || 'Please spell out the full middle name, not just an initial.');
+          fieldWrap.appendChild(initialErr);
+          input.addEventListener('blur', function () {
+            var v = input.value.trim();
+            initialErr.hidden = !(v && looksLikeInitial(v));
+          });
+          input.addEventListener('input', function () { initialErr.hidden = true; });
+        }
         input.addEventListener('input', refreshAddButtonState);
       }
       fieldWraps[f.id] = fieldWrap;
@@ -681,6 +756,14 @@
       var entry = {};
       (step.fields || []).forEach(function (f) {
         if (f.type === 'toggle') { entry[f.id] = formFields[f.id].checked; return; }
+        if (f.type === 'accommodation-group') {
+          var acc = formFields[f.id];
+          entry[f.id + 'Wanted'] = acc.checkbox.checked;
+          entry[f.id + 'GroupId'] = acc.checkbox.checked ? acc.select.value : '';
+          entry[f.id + 'NewGroupName'] = acc.checkbox.checked ? acc.newGroupInput.value.trim() : '';
+          entry[f.id + 'Note'] = acc.checkbox.checked ? acc.note.value.trim() : '';
+          return;
+        }
         entry[f.id] = isVisible(f) ? fieldValue(f) : '';
       });
       onAdd(entry);
