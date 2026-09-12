@@ -895,6 +895,11 @@
         type: 'button',
         onclick: function () {
           self.answers[step.id] = { value: opt.value, note: '' };
+          if (step.autoAdvance && !resolveFollowUp(step, opt)) {
+            self.recordAnswer(step.id, opt.value, '');
+            self.next();
+            return;
+          }
           self.render();
         },
       };
