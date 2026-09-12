@@ -169,7 +169,7 @@ its own settings UI and persist the resulting object if desired:
 ```js
 Formflow.mount(document.getElementById("app"), schema, {
   appearance: {
-    font: "humanist",             // humanist | system | readable | rounded | any CSS font stack
+    font: "inter",                // inter | system | familiar | any CSS font stack
     theme: "auto",                // auto | light | dark
     motion: "gentle",             // gentle | none
     questionTyping: true,          // fade question letters in sequentially

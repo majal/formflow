@@ -26,10 +26,9 @@
   }
 
   var FONT_STACKS = {
-    humanist: '"Avenir Next", Avenir, "Segoe UI", ui-sans-serif, system-ui, sans-serif',
+    inter: 'Inter, "SF Pro Text", "Segoe UI", ui-sans-serif, system-ui, sans-serif',
     system: 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-    readable: '"Atkinson Hyperlegible", "Trebuchet MS", Verdana, ui-sans-serif, sans-serif',
-    rounded: 'ui-rounded, "SF Pro Rounded", "Avenir Next", system-ui, sans-serif',
+    familiar: '"Helvetica Neue", Helvetica, Arial, ui-sans-serif, sans-serif',
   };
 
   function applyAppearance(settings, target) {
@@ -40,17 +39,20 @@
     else target.setAttribute('data-ff-theme', theme);
     target.setAttribute('data-ff-motion', settings.motion || 'gentle');
     target.setAttribute('data-ff-question-typing', settings.questionTyping === false ? 'off' : 'on');
-    target.style.setProperty('--ff-font-sans', FONT_STACKS[settings.font || 'humanist'] || settings.font || FONT_STACKS.humanist);
+    target.style.setProperty('--ff-font-sans', FONT_STACKS[settings.font || 'inter'] || settings.font || FONT_STACKS.inter);
   }
 
   function animatedQuestion(text, enabled) {
     if (!enabled) return document.createTextNode(text);
     var wrap = el('span', { class: 'ff-typing-text', 'aria-label': text });
-    Array.from(text).forEach(function (character, index) {
-      wrap.appendChild(el('span', {
-        class: 'ff-typing-letter', 'aria-hidden': 'true',
-        style: '--ff-letter-index:' + index,
-      }, [character === ' ' ? '\u00a0' : character]));
+    var letterIndex = 0;
+    text.split(/(\s+)/).forEach(function (part) {
+      if (/^\s+$/.test(part)) { wrap.appendChild(document.createTextNode(part)); return; }
+      var word = el('span', { class: 'ff-typing-word', 'aria-hidden': 'true' });
+      Array.from(part).forEach(function (character) {
+        word.appendChild(el('span', { class: 'ff-typing-letter', style: '--ff-letter-index:' + letterIndex++ }, [character]));
+      });
+      wrap.appendChild(word);
     });
     return wrap;
   }
