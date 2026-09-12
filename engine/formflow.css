@@ -14,7 +14,7 @@
      this stylesheet's <link>) rather than hand-typing its own stack, so
      nothing outside .ff-root can silently fall back to the browser's
      default serif font the way an unstyled element otherwise would. */
-  --ff-font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --ff-font-sans: Inter, "SF Pro Text", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
 
   --ff-color-bg: #fafafa;
   --ff-color-surface: #ffffff;
@@ -178,6 +178,7 @@
 @keyframes ff-card-enter-above { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes ff-card-exit-up { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(-18px); } }
 @keyframes ff-card-exit-down { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(18px); } }
+.ff-typing-word { display: inline-block; white-space: nowrap; }
 .ff-typing-letter { display: inline-block; opacity: 0; transform: translateY(7px); animation: ff-letter-arrive 380ms cubic-bezier(.22,.8,.25,1) forwards; animation-delay: calc(var(--ff-letter-index) * 18ms + 100ms); }
 @keyframes ff-letter-arrive { to { opacity: 1; transform: translateY(0); } }
 :root[data-ff-question-typing="off"] .ff-typing-letter { opacity: 1; transform: none; animation: none; }
