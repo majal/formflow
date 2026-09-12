@@ -61,6 +61,7 @@ validation — is the engine's job.
       type: "choice",              // "choice" | "text" | "info" | "repeat-group"
       question: "The question text. Supports {{token}} interpolation.",
       subtext: "Optional smaller text under the question.",
+      autoAdvance: true,           // optional: advance immediately when an option has no follow-up
       options: [                   // required for type "choice"
         {
           value: "yes", label: "Yes", emoji: "✅",
