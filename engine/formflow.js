@@ -925,7 +925,7 @@
         self.recordAnswer(step.id, current.value, note);
         self.next();
       },
-    }, [this.index >= this.schema.steps.length - 1 ? 'Finish' : 'Continue']);
+    }, [step.continueLabel || (this.index >= this.schema.steps.length - 1 ? 'Finish' : 'Continue')]);
     if (!current.value) continueBtn.disabled = true;
 
     wrap.appendChild(el('div', { class: 'ff-nav' }, [
