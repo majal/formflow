@@ -25,6 +25,36 @@
     });
   }
 
+  var FONT_STACKS = {
+    humanist: '"Avenir Next", Avenir, "Segoe UI", ui-sans-serif, system-ui, sans-serif',
+    system: 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    readable: '"Atkinson Hyperlegible", "Trebuchet MS", Verdana, ui-sans-serif, sans-serif',
+    rounded: 'ui-rounded, "SF Pro Rounded", "Avenir Next", system-ui, sans-serif',
+  };
+
+  function applyAppearance(settings, target) {
+    settings = settings || {};
+    target = target || document.documentElement;
+    var theme = settings.theme || 'auto';
+    if (theme === 'auto') target.removeAttribute('data-ff-theme');
+    else target.setAttribute('data-ff-theme', theme);
+    target.setAttribute('data-ff-motion', settings.motion || 'gentle');
+    target.setAttribute('data-ff-question-typing', settings.questionTyping === false ? 'off' : 'on');
+    target.style.setProperty('--ff-font-sans', FONT_STACKS[settings.font || 'humanist'] || settings.font || FONT_STACKS.humanist);
+  }
+
+  function animatedQuestion(text, enabled) {
+    if (!enabled) return document.createTextNode(text);
+    var wrap = el('span', { class: 'ff-typing-text', 'aria-label': text });
+    Array.from(text).forEach(function (character, index) {
+      wrap.appendChild(el('span', {
+        class: 'ff-typing-letter', 'aria-hidden': 'true',
+        style: '--ff-letter-index:' + index,
+      }, [character === ' ' ? '\u00a0' : character]));
+    });
+    return wrap;
+  }
+
   function el(tag, attrs, children) {
     var node = document.createElement(tag);
     attrs = attrs || {};
@@ -95,6 +125,26 @@
       var buttons = optionsRow.querySelectorAll('.ff-option');
       if (buttons[n - 1]) { e.preventDefault(); buttons[n - 1].click(); }
     });
+  }
+
+  function wireSwipeNavigation(engine) {
+    var start = null;
+    engine.root.addEventListener('touchstart', function (e) {
+      if (!(engine.opts.appearance || {}).swipeNavigation || e.touches.length !== 1) return;
+      if (e.target.closest('input, textarea, select, button, a')) return;
+      start = { x: e.touches[0].clientX, y: e.touches[0].clientY, at: Date.now() };
+    }, { passive: true });
+    engine.root.addEventListener('touchend', function (e) {
+      if (!start || !(engine.opts.appearance || {}).swipeNavigation) return;
+      var touch = e.changedTouches[0], dx = touch.clientX - start.x, dy = touch.clientY - start.y, elapsed = Date.now() - start.at;
+      start = null;
+      if (elapsed > 900 || Math.abs(dy) < 80 || Math.abs(dx) > Math.abs(dy) * .65) return;
+      if (dy > 0 && engine.index > 0) engine.back();
+      else if (dy < 0) {
+        var primary = engine.root.querySelector('.ff-btn-primary:not([disabled])');
+        if (primary) primary.click();
+      }
+    }, { passive: true });
   }
 
   // A per-option `followUp` wins; otherwise fall back to the older
@@ -523,22 +573,20 @@
 
   // ---------------------------------------------------------------------
   // Small Typeform-ish affordances shared across both engines:
-  //  - autofocusIfDesktop: jump straight into the first field of a
-  //    just-opened panel, but ONLY on a real pointer+keyboard device (same
-  //    media-query gate as the 1-9 shortcut badges) -- on a touchscreen
-  //    this would just pop the on-screen keyboard unexpectedly the moment
-  //    a panel appears, which is disruptive rather than helpful for this
-  //    audience's phones.
+  //  - focusInitialControl: place keyboard focus on the first useful control
+  //    and select an existing text value so it can be replaced immediately.
   //  - wireEnterSubmit: pressing Enter in a single-line <input> (not a
   //    textarea, where Enter should stay a newline) clicks the given
   //    button IF it's already enabled -- safe by construction, since a
   //    disabled button (incomplete/invalid entry) just no-ops.
   // ---------------------------------------------------------------------
-  function autofocusIfDesktop(container) {
+  function focusInitialControl(container) {
     try {
-      if (!window.matchMedia || !window.matchMedia('(hover: hover) and (pointer: fine)').matches) return;
-      var target = container.querySelector('input:not([type=checkbox]), textarea');
-      if (target) target.focus({ preventScroll: true });
+      var target = container.querySelector('input:not([type=checkbox]), textarea, select') ||
+        container.querySelector('.ff-btn-primary:not([disabled])') || container.querySelector('button:not([disabled])');
+      if (!target) return;
+      target.focus({ preventScroll: true });
+      if ((target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') && target.value) target.select();
     } catch (e) { /* focus is a nice-to-have, never worth breaking the panel over */ }
   }
   function wireEnterSubmit(containerEl, getButton) {
@@ -787,6 +835,7 @@
     this.tokens = this.opts.tokens || {};
     this.index = 0;
     this.answers = {}; // stepId -> { value, note } | { entries }
+    applyAppearance(this.opts.appearance || {}, document.documentElement);
     (schema.steps || []).forEach(function (step) {
       if (step.type === 'choice') {
         this.answers[step.id] = { value: step.initialValue || null, note: step.initialNote || '' };
@@ -797,6 +846,7 @@
       }
     }, this);
     wireOptionNumberShortcuts(this.root);
+    wireSwipeNavigation(this);
     this.render();
   }
 
@@ -805,13 +855,30 @@
   };
 
   Engine.prototype.goTo = function (i) {
-    this.index = Math.max(0, Math.min(i, this.schema.steps.length - 1));
+    var self = this;
+    var destination = Math.max(0, Math.min(i, this.schema.steps.length - 1));
+    var direction = destination < this.index ? 'back' : 'next';
+    var card = this.root.querySelector('.ff-card');
+    if ((this.opts.appearance || {}).motion !== 'none' && card) {
+      card.classList.add(direction === 'back' ? 'ff-exit-down' : 'ff-exit-up');
+      window.setTimeout(function () { self.index = destination; self._direction = direction; self.render(); }, 300);
+      return;
+    }
+    this.index = destination;
+    this._direction = direction;
     this.render();
   };
 
   Engine.prototype.next = function () {
     if (this.index >= this.schema.steps.length - 1) {
-      if (this.opts.onComplete) { this.opts.onComplete(this.answers); return; }
+      if (this.opts.onComplete) {
+        var self = this, card = this.root.querySelector('.ff-card');
+        if ((this.opts.appearance || {}).motion !== 'none' && card) {
+          card.classList.add('ff-exit-up');
+          window.setTimeout(function () { self.opts.onComplete(self.answers); }, 300);
+        } else this.opts.onComplete(this.answers);
+        return;
+      }
       this.index = this.schema.steps.length;
       this.render();
       return;
@@ -852,8 +919,9 @@
     }
 
     var step = this.currentStep();
-    var card = el('div', { class: 'ff-card' });
-    card.appendChild(el('h2', { class: 'ff-question' }, [interpolate(step.question, this.tokens)]));
+    var card = el('div', { class: 'ff-card ' + (this._direction === 'back' ? 'ff-enter-above' : 'ff-enter-below') });
+    var question = interpolate(step.question, this.tokens);
+    card.appendChild(el('h2', { class: 'ff-question' }, [animatedQuestion(question, (this.opts.appearance || {}).questionTyping !== false)]));
     if (step.subtext) card.appendChild(el('p', { class: 'ff-subtext', text: interpolate(step.subtext, this.tokens) }));
 
     if (step.type === 'info') {
@@ -867,6 +935,7 @@
     }
 
     root.appendChild(card);
+    window.setTimeout(function () { focusInitialControl(card); }, 0);
   };
 
   Engine.prototype.buildNavRow = function (step, primaryOnly) {
@@ -913,7 +982,7 @@
     if (fu && current.value) {
       panel = buildFollowUpPanel(fu, current.note || '');
       wrap.appendChild(panel.node);
-      autofocusIfDesktop(panel.node);
+      focusInitialControl(panel.node);
     }
 
     var continueBtn = el('button', {
@@ -975,7 +1044,6 @@
       continueBtn,
     ]));
     refresh();
-    autofocusIfDesktop(wrap);
     return wrap;
   };
 
@@ -1181,7 +1249,7 @@
     if (fu && current.value) {
       var panel = buildFollowUpPanel(fu, current.note || '');
       card.appendChild(panel.node);
-      autofocusIfDesktop(panel.node);
+      focusInitialControl(panel.node);
       var saveBtn = el('button', {
         class: 'ff-btn ff-btn-primary', type: 'button',
         onclick: function () {
@@ -1245,5 +1313,8 @@
     mountChecklist: function (root, schema, opts) {
       return new ChecklistEngine(root, schema, opts);
     },
+    applyAppearance: applyAppearance,
+    fontStacks: FONT_STACKS,
+    questionContent: animatedQuestion,
   };
 })(typeof window !== 'undefined' ? window : this);
