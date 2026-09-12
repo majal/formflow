@@ -163,6 +163,22 @@ native `<button>` semantics. Ignored while typing in any text field.
 
 ## Usage
 
+Linear flows accept reusable appearance settings. A host can expose these in
+its own settings UI and persist the resulting object if desired:
+
+```js
+Formflow.mount(document.getElementById("app"), schema, {
+  appearance: {
+    font: "humanist",             // humanist | system | readable | rounded | any CSS font stack
+    theme: "auto",                // auto | light | dark
+    motion: "gentle",             // gentle | none
+    questionTyping: true,          // fade question letters in sequentially
+    swipeNavigation: false,        // opt-in vertical swipes away from form controls
+  },
+  onComplete: (answers) => save(answers),
+});
+```
+
 ```html
 <link rel="stylesheet" href="formflow.css">
 <div id="app"></div>

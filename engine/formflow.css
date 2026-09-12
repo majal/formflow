@@ -165,11 +165,24 @@
   text-align: right;
 }
 
-.ff-card { animation: ff-fade-in 0.2s ease; }
+.ff-card { animation: ff-card-enter 520ms cubic-bezier(.22,.8,.25,1) both; }
 @keyframes ff-fade-in {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
 }
+.ff-enter-below { animation-name: ff-card-enter; }
+.ff-enter-above { animation-name: ff-card-enter-above; }
+.ff-exit-up { animation: ff-card-exit-up 300ms cubic-bezier(.4,0,.6,1) both; pointer-events: none; }
+.ff-exit-down { animation: ff-card-exit-down 300ms cubic-bezier(.4,0,.6,1) both; pointer-events: none; }
+@keyframes ff-card-enter { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes ff-card-enter-above { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes ff-card-exit-up { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(-18px); } }
+@keyframes ff-card-exit-down { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(18px); } }
+.ff-typing-letter { display: inline-block; opacity: 0; transform: translateY(7px); animation: ff-letter-arrive 380ms cubic-bezier(.22,.8,.25,1) forwards; animation-delay: calc(var(--ff-letter-index) * 18ms + 100ms); }
+@keyframes ff-letter-arrive { to { opacity: 1; transform: translateY(0); } }
+:root[data-ff-question-typing="off"] .ff-typing-letter { opacity: 1; transform: none; animation: none; }
+:root[data-ff-motion="none"] .ff-card,
+:root[data-ff-motion="none"] .ff-typing-letter { animation: none; opacity: 1; transform: none; }
 
 .ff-question { font-size: 23px; line-height: 1.35; margin: 0 0 8px; }
 .ff-subtext { font-size: 16px; color: var(--ff-color-text-muted); margin: 0 0 20px; }
@@ -208,7 +221,7 @@
   100% { transform: scale(1); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .ff-option-selected { animation: none; }
+  .ff-option-selected, .ff-card, .ff-typing-letter { animation: none; opacity: 1; transform: none; }
 }
 /* A checkmark on the selected option is a color-independent "this one's
    picked" signal -- needed because the neutral/gray color family's
