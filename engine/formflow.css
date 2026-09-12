@@ -317,6 +317,16 @@
 .ff-field-toggle input[type="checkbox"] { width: 19px; height: 19px; flex: none; accent-color: var(--ff-color-primary); }
 
 .ff-repeat-list { margin-bottom: 16px; }
+.ff-repeat-section-label {
+  margin: 22px 0 10px;
+  padding-top: 18px;
+  border-top: 1px solid var(--ff-color-border);
+  color: var(--ff-color-text-muted);
+  font-size: 14px;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
 .ff-repeat-entry {
   display: flex;
   align-items: center;
@@ -330,6 +340,7 @@
 .ff-repeat-entry[data-sync="pending"] { border-style: dashed; }
 .ff-repeat-entry[data-sync="error"] { border-color: var(--ff-status-attention-border); }
 .ff-repeat-form { border-top: 1px dashed var(--ff-color-border); padding-top: 16px; }
+.ff-repeat-form > .ff-btn-secondary { display: block; margin: 18px auto 0; }
 .ff-field { margin-bottom: 12px; }
 
 /* ---------- Offline-queue sync badges -- an optional per-row indicator a

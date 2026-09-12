@@ -1304,9 +1304,13 @@
     var self = this;
     var entries = this.entries[step.id];
     var card = el('div', { class: 'ff-card' });
+    if (step.entriesFirst && entries.length) {
+      card.appendChild(el('div', { class: 'ff-repeat-section-label', text: step.entriesLabel || 'Added' }));
+      card.appendChild(buildRepeatList(entries, function (i) { entries.splice(i, 1); self.render(); }, true));
+    }
     card.appendChild(el('h2', { class: 'ff-question' }, [interpolate(step.question, this.tokens)]));
     if (step.subtext) card.appendChild(el('p', { class: 'ff-subtext', text: interpolate(step.subtext, this.tokens) }));
-    card.appendChild(buildRepeatList(entries, function (i) { entries.splice(i, 1); self.render(); }, true));
+    if (!step.entriesFirst) card.appendChild(buildRepeatList(entries, function (i) { entries.splice(i, 1); self.render(); }, true));
     card.appendChild(buildRepeatForm(step, function (entry) {
       entries.push(entry);
       if (self.opts.onAnswer) self.opts.onAnswer(step.id, entry, '');
