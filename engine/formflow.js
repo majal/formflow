@@ -933,11 +933,14 @@
     }, [step.continueLabel || (this.index >= this.schema.steps.length - 1 ? 'Finish' : 'Continue')]);
     if (!current.value) continueBtn.disabled = true;
 
-    wrap.appendChild(el('div', { class: 'ff-nav' }, [
-      this.index > 0 ? el('button', { class: 'ff-btn ff-btn-ghost', type: 'button', onclick: function () { self.back(); } }, ['Back']) : null,
-      step.skippable ? el('button', { class: 'ff-btn ff-btn-ghost', type: 'button', onclick: function () { self.next(); } }, ['Skip for now']) : null,
-      continueBtn,
-    ]));
+    var hasFollowUps = (step.options || []).some(function (opt) { return !!resolveFollowUp(step, opt); });
+    if (!step.autoAdvance || hasFollowUps) {
+      wrap.appendChild(el('div', { class: 'ff-nav' }, [
+        this.index > 0 ? el('button', { class: 'ff-btn ff-btn-ghost', type: 'button', onclick: function () { self.back(); } }, ['Back']) : null,
+        step.skippable ? el('button', { class: 'ff-btn ff-btn-ghost', type: 'button', onclick: function () { self.next(); } }, ['Skip for now']) : null,
+        continueBtn,
+      ]));
+    }
 
     return wrap;
   };
