@@ -173,7 +173,7 @@ Formflow.mount(document.getElementById("app"), schema, {
     theme: "auto",                // auto | light | dark
     motion: "gentle",             // gentle | none
     questionTyping: true,          // fade question letters in sequentially
-    swipeNavigation: false,        // opt-in vertical swipes away from form controls
+    swipeNavigation: false,        // vertical swipes; up accepts an auto-advance choice
   },
   onComplete: (answers) => save(answers),
 });
