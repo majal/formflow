@@ -145,6 +145,13 @@
       else if (dy < 0) {
         var primary = engine.root.querySelector('.ff-btn-primary:not([disabled])');
         if (primary) primary.click();
+        else {
+          // Auto-advance choice pages intentionally have no Continue
+          // button. An upward swipe accepts the focused choice, or the
+          // first choice when focus is elsewhere.
+          var choice = engine.root.querySelector('.ff-option:focus') || engine.root.querySelector('.ff-option');
+          if (choice) choice.click();
+        }
       }
     }, { passive: true });
   }
