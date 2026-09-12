@@ -78,6 +78,18 @@ validation — is the engine's job.
       skippable: true,             // shows a "Skip for now" control
     },
     {
+      id: "full-name",
+      type: "text",
+      question: "What’s your name?",
+      placeholder: "Your full name",
+      required: true,
+      inputType: "text",          // single-line by default; set multiline: true for a textarea
+      autocomplete: "name",
+      maxlength: 120,
+      continueLabel: "Next",
+      initialValue: "",           // optional prefill supplied by the host
+    },
+    {
       id: "add-more",
       type: "repeat-group",        // "add another entry" flows
       question: "Anyone we missed?",

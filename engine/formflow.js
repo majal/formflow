@@ -790,6 +790,8 @@
     (schema.steps || []).forEach(function (step) {
       if (step.type === 'choice') {
         this.answers[step.id] = { value: step.initialValue || null, note: step.initialNote || '' };
+      } else if (step.type === 'text') {
+        this.answers[step.id] = { value: step.initialValue || '', note: '' };
       } else if (step.type === 'repeat-group') {
         this.answers[step.id] = { entries: (step.initialEntries || []).slice() };
       }
@@ -809,7 +811,8 @@
 
   Engine.prototype.next = function () {
     if (this.index >= this.schema.steps.length - 1) {
-      if (this.opts.onComplete) this.opts.onComplete(this.answers);
+      if (this.opts.onComplete) { this.opts.onComplete(this.answers); return; }
+      this.index = this.schema.steps.length;
       this.render();
       return;
     }
@@ -937,26 +940,34 @@
   Engine.prototype.buildText = function (step) {
     var self = this;
     var current = this.answers[step.id] || {};
-    var input = el('textarea', {
-      class: 'ff-textarea',
-      rows: '4',
-      placeholder: step.placeholder || '',
+    var multiline = step.multiline === true;
+    var input = el(multiline ? 'textarea' : 'input', multiline ? {
+      class: 'ff-textarea', rows: String(step.rows || 4), placeholder: step.placeholder || '',
+    } : {
+      class: 'ff-input', type: step.inputType || 'text', placeholder: step.placeholder || '',
+      autocomplete: step.autocomplete || 'off', autocapitalize: step.autocapitalize || 'words',
+      inputmode: step.inputmode || 'text', maxlength: String(step.maxlength || 524288),
     });
     input.value = current.value || '';
     var wrap = el('div', { class: 'ff-text-wrap' }, [input]);
+    var continueBtn = el('button', {
+      class: 'ff-btn ff-btn-primary', type: 'button',
+      onclick: function () {
+        if (step.required && !input.value.trim()) return;
+        self.recordAnswer(step.id, input.value.trim(), '');
+        self.next();
+      },
+    }, [step.continueLabel || (this.index >= this.schema.steps.length - 1 ? 'Finish' : 'Continue')]);
+    function refresh() { continueBtn.disabled = !!step.required && !input.value.trim(); }
+    input.addEventListener('input', refresh);
+    if (!multiline) wireEnterSubmit(wrap, function () { return continueBtn; });
     wrap.appendChild(el('div', { class: 'ff-nav' }, [
-      this.index > 0 ? el('button', { class: 'ff-btn ff-btn-ghost', type: 'button', onclick: function () { self.back(); } }) : null,
+      this.index > 0 ? el('button', { class: 'ff-btn ff-btn-ghost', type: 'button', onclick: function () { self.back(); } }, ['Back']) : null,
       step.skippable ? el('button', { class: 'ff-btn ff-btn-ghost', type: 'button', onclick: function () { self.next(); } }, ['Skip for now']) : null,
-      el('button', {
-        class: 'ff-btn ff-btn-primary',
-        type: 'button',
-        onclick: function () {
-          if (step.required && !input.value.trim()) return;
-          self.recordAnswer(step.id, input.value, '');
-          self.next();
-        },
-      }, [this.index >= this.schema.steps.length - 1 ? 'Finish' : 'Continue']),
+      continueBtn,
     ]));
+    refresh();
+    autofocusIfDesktop(wrap);
     return wrap;
   };
 
