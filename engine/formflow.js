@@ -44,11 +44,11 @@
 
   function animatedQuestion(text, enabled) {
     if (!enabled) return document.createTextNode(text);
-    var wrap = el('span', { class: 'ff-typing-text', 'aria-label': text });
+    var wrap = el('span', { class: 'ff-typing-text' });
     var letterIndex = 0;
     text.split(/(\s+)/).forEach(function (part) {
       if (/^\s+$/.test(part)) { wrap.appendChild(document.createTextNode(part)); return; }
-      var word = el('span', { class: 'ff-typing-word', 'aria-hidden': 'true' });
+      var word = el('span', { class: 'ff-typing-word' });
       Array.from(part).forEach(function (character) {
         word.appendChild(el('span', { class: 'ff-typing-letter', style: '--ff-letter-index:' + letterIndex++ }, [character]));
       });
@@ -115,45 +115,51 @@
   // typing a real "1" into a note/date field never gets hijacked.
   // ---------------------------------------------------------------------
   function wireOptionNumberShortcuts(root) {
-    document.addEventListener('keydown', function (e) {
-      if (!root.isConnected) return;
+    if (root._ffKeyHandler) document.removeEventListener('keydown', root._ffKeyHandler);
+    root._ffKeyHandler = function (e) {
+      if (!root.isConnected || document.querySelector('dialog[open]') || e.repeat) return;
+      if (document.activeElement && document.activeElement.isContentEditable) return;
       var activeTag = (document.activeElement && document.activeElement.tagName) || '';
       if (activeTag === 'INPUT' || activeTag === 'TEXTAREA' || activeTag === 'SELECT') return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
-      var n = parseInt(e.key, 10);
+      var n = /^[1-9]$/.test(e.key) ? Number(e.key) : 0;
       if (!n || n < 1 || n > 9) return;
       var optionsRow = root.querySelector('.ff-options');
       if (!optionsRow) return;
       var buttons = optionsRow.querySelectorAll('.ff-option');
       if (buttons[n - 1]) { e.preventDefault(); buttons[n - 1].click(); }
-    });
+    };
+    document.addEventListener('keydown', root._ffKeyHandler);
   }
 
   function wireSwipeNavigation(engine) {
+    if (engine.root._ffSwipeAbort) engine.root._ffSwipeAbort.abort();
+    var controller = new AbortController();
+    engine.root._ffSwipeAbort = controller;
     var start = null;
     engine.root.addEventListener('touchstart', function (e) {
       if (!(engine.opts.appearance || {}).swipeNavigation || e.touches.length !== 1) return;
-      if (e.target.closest('input, textarea, select, button, a')) return;
+      if (e.target.closest('input, textarea, select, button, a, details')) return;
       start = { x: e.touches[0].clientX, y: e.touches[0].clientY, at: Date.now() };
-    }, { passive: true });
+    }, { passive: true, signal: controller.signal });
     engine.root.addEventListener('touchend', function (e) {
-      if (!start || !(engine.opts.appearance || {}).swipeNavigation) return;
+      if (!start || !(engine.opts.appearance || {}).swipeNavigation || document.querySelector('dialog[open]')) return;
       var touch = e.changedTouches[0], dx = touch.clientX - start.x, dy = touch.clientY - start.y, elapsed = Date.now() - start.at;
       start = null;
       if (elapsed > 900 || Math.abs(dy) < 80 || Math.abs(dx) > Math.abs(dy) * .65) return;
       if (dy > 0 && engine.index > 0) engine.back();
-      else if (dy < 0) {
+      else if (dy < 0 && !engine.currentStep().submit) {
         var primary = engine.root.querySelector('.ff-btn-primary:not([disabled])');
         if (primary) primary.click();
         else {
           // Auto-advance choice pages intentionally have no Continue
           // button. An upward swipe accepts the focused choice, or the
           // first choice when focus is elsewhere.
-          var choice = engine.root.querySelector('.ff-option:focus') || engine.root.querySelector('.ff-option');
+          var choice = engine.root.querySelector('.ff-option:focus');
           if (choice) choice.click();
         }
       }
-    }, { passive: true });
+    }, { passive: true, signal: controller.signal });
   }
 
   // A per-option `followUp` wins; otherwise fall back to the older
@@ -843,6 +849,7 @@
     this.opts = opts || {};
     this.tokens = this.opts.tokens || {};
     this.index = 0;
+    this.history = [];
     this.answers = {}; // stepId -> { value, note } | { entries }
     applyAppearance(this.opts.appearance || {}, document.documentElement);
     (schema.steps || []).forEach(function (step) {
@@ -864,13 +871,17 @@
   };
 
   Engine.prototype.goTo = function (i) {
+    if (this.transitioning) return;
     var self = this;
     var destination = Math.max(0, Math.min(i, this.schema.steps.length - 1));
-    var direction = destination < this.index ? 'back' : 'next';
+    var direction = this._backward ? 'back' : 'next';
+    if (!this._backward && destination !== this.index) this.history.push(this.index);
+    this._backward = false;
     var card = this.root.querySelector('.ff-card');
-    if ((this.opts.appearance || {}).motion !== 'none' && card) {
+    if ((this.opts.appearance || {}).motion !== 'none' && !matchMedia('(prefers-reduced-motion: reduce)').matches && card) {
+      this.transitioning = true;
       card.classList.add(direction === 'back' ? 'ff-exit-down' : 'ff-exit-up');
-      window.setTimeout(function () { self.index = destination; self._direction = direction; self.render(); }, 300);
+      window.setTimeout(function () { self.transitioning = false; self.index = destination; self._direction = direction; self.render(); }, 300);
       return;
     }
     this.index = destination;
@@ -879,24 +890,21 @@
   };
 
   Engine.prototype.next = function () {
-    if (this.index >= this.schema.steps.length - 1) {
-      if (this.opts.onComplete) {
-        var self = this, card = this.root.querySelector('.ff-card');
-        if ((this.opts.appearance || {}).motion !== 'none' && card) {
-          card.classList.add('ff-exit-up');
-          window.setTimeout(function () { self.opts.onComplete(self.answers); }, 300);
-        } else this.opts.onComplete(this.answers);
-        return;
-      }
-      this.index = this.schema.steps.length;
-      this.render();
+    if (this.transitioning) return;
+    var next = this.opts.routeNext ? this.opts.routeNext(this.currentStep(), this.answers, this) : this.index + 1;
+    if (next === null || next >= this.schema.steps.length) {
+      if (this.opts.onComplete) this.opts.onComplete(this.answers);
+      else { this.index = this.schema.steps.length; this.render(); }
       return;
     }
-    this.goTo(this.index + 1);
+    this.goTo(next);
   };
 
   Engine.prototype.back = function () {
-    this.goTo(this.index - 1);
+    if (this.transitioning) return;
+    if (!this.history.length) { if (this.opts.onBack) this.opts.onBack(this.answers); return; }
+    this._backward = true;
+    this.goTo(this.history.pop());
   };
 
   Engine.prototype.recordAnswer = function (stepId, value, note) {
@@ -910,6 +918,7 @@
   };
 
   Engine.prototype.render = function () {
+    if (this.opts.beforeRender) this.opts.beforeRender(this);
     var root = this.root;
     root.innerHTML = '';
     root.className = 'ff-root';
@@ -944,19 +953,20 @@
     }
 
     root.appendChild(card);
+    if (this.opts.onRender) this.opts.onRender(this, card);
     window.setTimeout(function () { focusInitialControl(card); }, 0);
   };
 
   Engine.prototype.buildNavRow = function (step, primaryOnly) {
     var self = this;
     var row = el('div', { class: 'ff-nav' });
-    if (this.index > 0) {
+    if (this.history.length || this.opts.onBack) {
       row.appendChild(el('button', { class: 'ff-btn ff-btn-ghost', type: 'button', onclick: function () { self.back(); } }, ['Back']));
     }
     if (!primaryOnly && step.skippable) {
       row.appendChild(el('button', { class: 'ff-btn ff-btn-ghost', type: 'button', onclick: function () { self.next(); } }, ['Skip for now']));
     }
-    row.appendChild(el('button', { class: 'ff-btn ff-btn-primary', type: 'button', onclick: function () { self.next(); } }, [this.index >= this.schema.steps.length - 1 ? 'Finish' : 'Continue']));
+    row.appendChild(el('button', { class: 'ff-btn ff-btn-primary', type: 'button', onclick: function () { self.next(); } }, [step.continueLabel || (this.index >= this.schema.steps.length - 1 ? 'Finish' : 'Continue')]));
     return row;
   };
 
@@ -972,6 +982,7 @@
         class: 'ff-option' + (selected ? ' ff-option-selected' : ''),
         type: 'button',
         onclick: function () {
+          if (self.transitioning) return;
           self.answers[step.id] = { value: opt.value, note: '' };
           if (step.autoAdvance && !resolveFollowUp(step, opt)) {
             self.recordAnswer(step.id, opt.value, '');
@@ -981,6 +992,7 @@
           self.render();
         },
       };
+      attrs['aria-pressed'] = String(selected);
       if (opt.colorKey) attrs['data-color'] = opt.colorKey;
       optionsRow.appendChild(el('button', attrs, optionChildren(opt, i)));
     });
@@ -1012,11 +1024,11 @@
     if (!current.value) continueBtn.disabled = true;
 
     var hasFollowUps = (step.options || []).some(function (opt) { return !!resolveFollowUp(step, opt); });
-    if (!step.autoAdvance || hasFollowUps) {
+    if (this.history.length || this.opts.onBack || !step.autoAdvance || hasFollowUps) {
       wrap.appendChild(el('div', { class: 'ff-nav' }, [
-        this.index > 0 ? el('button', { class: 'ff-btn ff-btn-ghost', type: 'button', onclick: function () { self.back(); } }, ['Back']) : null,
+        (this.history.length || this.opts.onBack) ? el('button', { class: 'ff-btn ff-btn-ghost', type: 'button', onclick: function () { self.back(); } }, ['Back']) : null,
         step.skippable ? el('button', { class: 'ff-btn ff-btn-ghost', type: 'button', onclick: function () { self.next(); } }, ['Skip for now']) : null,
-        continueBtn,
+        !step.autoAdvance || hasFollowUps ? continueBtn : null,
       ]));
     }
 
@@ -1034,6 +1046,9 @@
       autocomplete: step.autocomplete || 'off', autocapitalize: step.autocapitalize || 'words',
       inputmode: step.inputmode || 'text', maxlength: String(step.maxlength || 524288),
     });
+    input.setAttribute('aria-label', interpolate(step.question, this.tokens));
+    if (step.maxlength) input.maxLength = step.maxlength;
+    input.required = !!step.required;
     input.value = current.value || '';
     var wrap = el('div', { class: 'ff-text-wrap' }, [input]);
     var continueBtn = el('button', {
@@ -1044,11 +1059,12 @@
         self.next();
       },
     }, [step.continueLabel || (this.index >= this.schema.steps.length - 1 ? 'Finish' : 'Continue')]);
-    function refresh() { continueBtn.disabled = !!step.required && !input.value.trim(); }
+    function refresh() { self.answers[step.id] = {value: input.value, note: ''}; continueBtn.disabled = !!step.required && !input.value.trim(); }
+    input.addEventListener('keydown', function(e) { if (multiline && (e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); continueBtn.click(); } });
     input.addEventListener('input', refresh);
     if (!multiline) wireEnterSubmit(wrap, function () { return continueBtn; });
     wrap.appendChild(el('div', { class: 'ff-nav' }, [
-      this.index > 0 ? el('button', { class: 'ff-btn ff-btn-ghost', type: 'button', onclick: function () { self.back(); } }, ['Back']) : null,
+      (this.history.length || this.opts.onBack) ? el('button', { class: 'ff-btn ff-btn-ghost', type: 'button', onclick: function () { self.back(); } }, ['Back']) : null,
       step.skippable ? el('button', { class: 'ff-btn ff-btn-ghost', type: 'button', onclick: function () { self.next(); } }, ['Skip for now']) : null,
       continueBtn,
     ]));
@@ -1089,6 +1105,7 @@
     this.answers = {};
     this.entries = {}; // repeat-group state, keyed by step id
     this.detailStepId = null;
+    applyAppearance(this.opts.appearance || {}, document.documentElement);
 
     this.itemSteps = (schema.steps || []).filter(function (s) { return s.type === 'choice'; });
     this.leadingInfo = (schema.steps || []).find(function (s) { return s.type === 'info'; });
@@ -1319,7 +1336,24 @@
     return card;
   };
 
+  // A disclosure changes the space occupied by its content. Native <details>
+  // remains the semantic control; motion can be disabled by host or device.
+  function setDisclosure(details, open, appearance) {
+    var content = details.querySelector('.fold-content, [data-ff-disclosure-content]');
+    if (details._ffAnimation) { details._ffAnimation.cancel(); details._ffAnimation = null; }
+    if (!content || !content.animate || (appearance || {}).motion === 'none' || matchMedia('(prefers-reduced-motion: reduce)').matches) { details.open = open; return; }
+    if (details.open === open) return;
+    if (open) details.open = true;
+    var height = content.scrollHeight;
+    content.style.overflow = 'hidden';
+    var animation = content.animate(open ? [{height:'0px'},{height:height+'px'}] : [{height:height+'px'},{height:'0px'}], {duration:240,easing:'cubic-bezier(.2,.75,.25,1)'});
+    details._ffAnimation = animation;
+    animation.onfinish = function () { details.open = open; content.style.overflow = ''; details._ffAnimation = null; };
+    animation.oncancel = function () { content.style.overflow = ''; };
+  }
+
   global.Formflow = {
+    setDisclosure: setDisclosure,
     mount: function (root, schema, opts) {
       return new Engine(root, schema, opts);
     },

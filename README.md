@@ -173,7 +173,7 @@ Formflow.mount(document.getElementById("app"), schema, {
     theme: "auto",                // auto | light | dark
     motion: "gentle",             // gentle | none
     questionTyping: true,          // fade question letters in sequentially
-    swipeNavigation: false,        // vertical swipes; up accepts an auto-advance choice
+    swipeNavigation: false,        // vertical swipes; up accepts the focused choice
   },
   onComplete: (answers) => save(answers),
 });
@@ -197,3 +197,18 @@ See `examples/demo.html` (linear) and `examples/checklist-demo.html`
 ## License
 
 MIT — see `LICENSE`. Use it, fork it, ship it.
+
+## Branches and disclosures
+
+Linear flow options may include `routeNext(step, answers, engine)`, returning a
+step index or `null` to finish; `beforeRender(engine)` for derived question
+properties; and `onRender(engine, card)` for adjacent controls. Back follows
+visited steps, including branches. `onBack(answers)` handles Back on the first
+step when the host has an earlier screen. Set `submit: true` on a final step
+to prevent a reading swipe from submitting it. Text drafts remain in memory.
+Auto-advancing choices still show Back, and numeric-key handlers replace prior
+handlers on a remounted root. Dialogs and editable fields keep their keys.
+
+`Formflow.setDisclosure(details, open, appearance)` animates the occupied height
+of `.fold-content` or `[data-ff-disclosure-content]`, retaining native details
+semantics and honoring host/device reduced motion. Hosts own the content.
