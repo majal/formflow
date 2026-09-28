@@ -122,6 +122,19 @@
       var activeTag = (document.activeElement && document.activeElement.tagName) || '';
       if (activeTag === 'INPUT' || activeTag === 'TEXTAREA' || activeTag === 'SELECT') return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        // Arrow keys move focus through the choices (wrapping); Enter/Space
+        // then picks the focused one, like a native radio group.
+        var list = root.querySelector('.ff-options');
+        var opts = list ? Array.prototype.slice.call(list.querySelectorAll('.ff-option')) : [];
+        if (!opts.length) return;
+        e.preventDefault();
+        var at = opts.indexOf(document.activeElement);
+        var next = at < 0 ? (e.key === 'ArrowDown' ? 0 : opts.length - 1)
+          : (at + (e.key === 'ArrowDown' ? 1 : -1) + opts.length) % opts.length;
+        opts[next].focus();
+        return;
+      }
       var n = /^[1-9]$/.test(e.key) ? Number(e.key) : 0;
       if (!n || n < 1 || n > 9) return;
       var optionsRow = root.querySelector('.ff-options');
@@ -1341,14 +1354,22 @@
   function setDisclosure(details, open, appearance) {
     var content = details.querySelector('.fold-content, [data-ff-disclosure-content]');
     if (details._ffAnimation) { details._ffAnimation.cancel(); details._ffAnimation = null; }
+    // data-ff-open flips at the START so the chevron turns with the motion.
+    details.setAttribute('data-ff-open', String(open));
     if (!content || !content.animate || (appearance || {}).motion === 'none' || matchMedia('(prefers-reduced-motion: reduce)').matches) { details.open = open; return; }
-    if (details.open === open) return;
+    if (details.open === open && !details._ffClosing) return;
     if (open) details.open = true;
-    var height = content.scrollHeight;
+    var from = content.getBoundingClientRect().height;
+    var to = open ? content.scrollHeight : 0;
+    if (!details._ffClosing && open) from = 0;
+    details._ffClosing = !open;
     content.style.overflow = 'hidden';
-    var animation = content.animate(open ? [{height:'0px'},{height:height+'px'}] : [{height:height+'px'},{height:'0px'}], {duration:240,easing:'cubic-bezier(.2,.75,.25,1)'});
+    // Soft start and soft stop (ease-in-out); the content fades with the
+    // height so text never pops in or is cut off abruptly.
+    var animation = content.animate([{ height: from + 'px', opacity: open ? 0 : 1 }, { height: to + 'px', opacity: open ? 1 : 0 }],
+      { duration: open ? 420 : 340, easing: 'cubic-bezier(.65,0,.35,1)' });
     details._ffAnimation = animation;
-    animation.onfinish = function () { details.open = open; content.style.overflow = ''; details._ffAnimation = null; };
+    animation.onfinish = function () { details.open = open; details._ffClosing = false; content.style.overflow = ''; details._ffAnimation = null; };
     animation.oncancel = function () { content.style.overflow = ''; };
   }
 

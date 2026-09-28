@@ -9,6 +9,16 @@
    attribute set). */
 
 :root {
+  /* Motion tokens (see README "Motion"): motion guides, it never decorates.
+     Arrivals decelerate like an object coming to rest (ease-out); things that
+     move in place (disclosures, chevrons) start and stop gently (ease-in-out);
+     departures accelerate away (ease-in). */
+  --ff-ease-out: cubic-bezier(.22, 1, .36, 1);
+  --ff-ease-in-out: cubic-bezier(.65, 0, .35, 1);
+  --ff-ease-in: cubic-bezier(.4, 0, 1, 1);
+  --ff-dur-hover: 180ms;
+  --ff-dur-disclosure: 420ms;
+  --ff-dur-page: 700ms;
   /* Single font-stack source of truth -- a host page should reference this
      same variable (it's set before any host <style> block that comes after
      this stylesheet's <link>) rather than hand-typing its own stack, so
@@ -201,9 +211,15 @@
   background: var(--ff-color-surface);
   color: var(--ff-color-text);
   cursor: pointer;
-  transition: border-color 0.15s ease, background 0.15s ease;
+  transition: border-color var(--ff-dur-hover) var(--ff-ease-out), background var(--ff-dur-hover) var(--ff-ease-out),
+    transform var(--ff-dur-hover) var(--ff-ease-out), box-shadow var(--ff-dur-hover) var(--ff-ease-out);
 }
-.ff-option:hover { border-color: var(--ff-color-primary-border); }
+/* Hover lifts a choice slightly toward the pointer; pressing pushes it back
+   down -- the physical affordance of a button, not an ornament. */
+@media (hover: hover) {
+  .ff-option:hover { border-color: var(--ff-color-primary-border); transform: translateY(-1px); box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08); }
+}
+.ff-option:active { transform: translateY(0) scale(0.99); box-shadow: none; transition-duration: 80ms; }
 .ff-option-selected {
   border-color: var(--ff-color-primary);
   background: var(--ff-color-primary-bg);
@@ -222,7 +238,8 @@
   100% { transform: scale(1); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .ff-option-selected, .ff-card, .ff-typing-letter { animation: none; opacity: 1; transform: none; }
+  .ff-option-selected, .ff-card, .ff-typing-letter, .ff-page-enter { animation: none; opacity: 1; transform: none; }
+  .ff-option, .ff-btn, .ff-chevron { transition: none; }
 }
 /* A checkmark on the selected option is a color-independent "this one's
    picked" signal -- needed because the neutral/gray color family's
@@ -299,7 +316,13 @@
 .ff-textarea:focus, .ff-input:focus { outline: none; border-color: var(--ff-color-primary); }
 
 .ff-nav { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
-.ff-btn { font-size: 16px; padding: 12px 22px; border-radius: 10px; border: none; cursor: pointer; font-family: inherit; }
+/* Buttons and button-styled links share one box model so a label is always
+   centred, whatever element carries it. */
+.ff-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; text-align: center; text-decoration: none; line-height: 1.25; box-sizing: border-box;
+  font-size: 16px; padding: 12px 22px; border-radius: 10px; border: none; cursor: pointer; font-family: inherit;
+  transition: transform var(--ff-dur-hover) var(--ff-ease-out), box-shadow var(--ff-dur-hover) var(--ff-ease-out), background var(--ff-dur-hover) var(--ff-ease-out); }
+@media (hover: hover) { .ff-btn:not(:disabled):hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(15, 23, 42, 0.10); } }
+.ff-btn:not(:disabled):active { transform: translateY(0); box-shadow: none; transition-duration: 80ms; }
 .ff-btn-primary { background: var(--ff-color-primary); color: var(--ff-color-primary-contrast); margin-left: auto; }
 .ff-btn-ghost { background: transparent; color: var(--ff-color-text-muted); border: 2px solid var(--ff-color-border); }
 .ff-btn-secondary { background: var(--ff-color-primary-bg); color: var(--ff-color-primary); border: 2px solid var(--ff-color-primary-border); }
@@ -420,3 +443,15 @@
   .ff-question { font-size: 19px; }
   .ff-btn-primary { margin-left: 0; order: 99; width: 100%; }
 }
+
+/* Page arrival: static content above a flow (instructions, headers) drifts in
+   slowly and settles, so the page never appears all at once. */
+.ff-page-enter { animation: ff-page-enter var(--ff-dur-page) var(--ff-ease-out) both; }
+@keyframes ff-page-enter { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+/* Disclosure chevron: one drawn shape that rotates in step with the
+   disclosure's own height animation (same duration and easing). */
+.ff-chevron { display: inline-block; width: 8px; height: 8px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor;
+  transform: translateY(-2px) rotate(45deg); transition: transform var(--ff-dur-disclosure) var(--ff-ease-in-out); }
+[data-ff-open="true"] > summary .ff-chevron { transform: translateY(2px) rotate(225deg); }
+:root[data-ff-motion="none"] .ff-option, :root[data-ff-motion="none"] .ff-btn, :root[data-ff-motion="none"] .ff-chevron,
+:root[data-ff-motion="none"] .ff-page-enter { transition: none; animation: none; }

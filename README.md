@@ -155,11 +155,34 @@ enabled/disabled state always tracks current validity.
 
 ### Keyboard shortcuts (desktop)
 
+Arrow Up/Down move focus through a question's choices (wrapping); Enter or
+Space picks the focused choice. Number keys 1-9 pick directly.
+
 Press **1–9** to pick that numbered option in the currently-visible
 choice step — no reaching for a mouse. Shown as a small badge next to
 each option on pointer+keyboard devices only (hidden on touchscreens,
 where there's no keyboard to press). Tab/Enter/Space already work via
 native `<button>` semantics. Ignored while typing in any text field.
+
+## Motion
+
+Animation here exists to guide, never to decorate. Every movement should
+follow real-world expectations and physics, and use the shared tokens in
+`engine/formflow.css` (`--ff-ease-*`, `--ff-dur-*`):
+
+- Arriving things decelerate and settle (ease-out): cards, the page's
+  static intro (`.ff-page-enter`, a slow fade and rise).
+- Things that move in place start and stop softly (ease-in-out, about
+  420 ms): disclosures, and their chevron (`.ff-chevron`), which turns in step
+  with the height change. Content fades with the height, so it never pops.
+- Departing things accelerate away (ease-in).
+- Hover lifts a choice or button about 1 px toward the pointer; pressing
+  pushes it back down. This is the physical cue of a pressable object, and
+  only applies on devices that really hover.
+- No bounce or overshoot beyond a small confirmation pulse, and nothing
+  loops except a real wait indicator.
+- `prefers-reduced-motion` and the Appearance "motion: none" setting turn it
+  all off.
 
 ## Usage
 
