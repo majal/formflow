@@ -325,6 +325,16 @@
 .ff-btn:not(:disabled):active { transform: translateY(0); box-shadow: none; transition-duration: 80ms; }
 .ff-btn-primary { background: var(--ff-color-primary); color: var(--ff-color-primary-contrast); margin-left: auto; }
 .ff-btn-ghost { background: transparent; color: var(--ff-color-text-muted); border: 2px solid var(--ff-color-border); }
+/* Arrow-key "not yet" highlight (see wireArrowNavigation): a soft ring
+   pulse on whatever is still needed -- the choices, an empty required
+   field, or the button that must be pressed deliberately (e.g. Send).
+   Colour-only, so it stays even when motion is reduced. */
+.ff-nudge-hint, .ff-options.ff-nudge-hint .ff-option { animation: ff-nudge-hint 900ms var(--ff-ease-out); }
+.ff-options.ff-nudge-hint { animation: none; }
+@keyframes ff-nudge-hint {
+  0%, 100% { box-shadow: 0 0 0 0 transparent; }
+  30% { box-shadow: 0 0 0 4px var(--ff-color-primary-border); }
+}
 .ff-btn-secondary { background: var(--ff-color-primary-bg); color: var(--ff-color-primary); border: 2px solid var(--ff-color-primary-border); }
 .ff-clear-answer { margin-top: 2px; margin-bottom: 16px; font-size: 15px; padding: 8px 16px; }
 .ff-btn-small { padding: 6px 12px; font-size: 15px; }

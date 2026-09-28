@@ -114,7 +114,7 @@
   // reference. Ignored while focus is in any text-entry control so
   // typing a real "1" into a note/date field never gets hijacked.
   // ---------------------------------------------------------------------
-  function wireOptionNumberShortcuts(root) {
+  function wireOptionNumberShortcuts(root, getAppearance) {
     if (root._ffKeyHandler) document.removeEventListener('keydown', root._ffKeyHandler);
     root._ffKeyHandler = function (e) {
       if (!root.isConnected || document.querySelector('dialog[open]') || e.repeat) return;
@@ -129,9 +129,14 @@
         var opts = list ? Array.prototype.slice.call(list.querySelectorAll('.ff-option')) : [];
         if (!opts.length) return;
         e.preventDefault();
+        // Wraps top<->bottom by default; `appearance.choiceWrap: false` stops at the ends.
         var at = opts.indexOf(document.activeElement);
-        var next = at < 0 ? (e.key === 'ArrowDown' ? 0 : opts.length - 1)
-          : (at + (e.key === 'ArrowDown' ? 1 : -1) + opts.length) % opts.length;
+        var step = e.key === 'ArrowDown' ? 1 : -1;
+        var next = at < 0 ? (step > 0 ? 0 : opts.length - 1) : at + step;
+        if (next < 0 || next >= opts.length) {
+          if ((getAppearance() || {}).choiceWrap === false) return;
+          next = (next + opts.length) % opts.length;
+        }
         opts[next].focus();
         return;
       }
@@ -173,6 +178,121 @@
         }
       }
     }, { passive: true, signal: controller.signal });
+  }
+
+  // ---------------------------------------------------------------------
+  // Desktop Left/Right arrows mirror Back/Continue. Left does exactly what
+  // the visible Back button does. Right does what Continue (or, on an
+  // auto-advance choice, the already-selected option) does -- but only
+  // when that lands on a LATER step: it never submits (`submit: true`),
+  // never finishes the flow, and never follows a route that loops back
+  // (e.g. an info page whose button reads "Back"). Anything refused gets a
+  // small head-shake nudge plus a highlight on what's missing, so a key
+  // press is never silently ignored. Editable fields keep their arrows.
+  // Opt out with `appearance.arrowNavigation: false`.
+  // ---------------------------------------------------------------------
+  function wireArrowNavigation(engine) {
+    var root = engine.root;
+    if (root._ffArrowHandler) document.removeEventListener('keydown', root._ffArrowHandler);
+    root._ffArrowHandler = function (e) {
+      if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+      if (root._ffEngine !== engine || !root.isConnected || document.querySelector('dialog[open]')) return;
+      if ((engine.opts.appearance || {}).arrowNavigation === false) return;
+      if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+      var active = document.activeElement;
+      if (active && active !== document.body && !root.contains(active)) return;
+      if (active && (active.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName))) return;
+      if (engine.index >= engine.schema.steps.length) return;
+      e.preventDefault();
+      if (e.repeat || engine.transitioning) return;
+      if (e.key === 'ArrowLeft') {
+        if (engine.history.length || engine.opts.onBack) engine.back();
+        else nudgeCard(engine, 'back');
+        return;
+      }
+      var forward = forwardControl(engine);
+      if (!forward.control) { nudgeCard(engine, 'next', forward.hint); return; }
+      var before = engine.index;
+      forward.control.click();
+      // A follow-up that fails validation leaves us on the same step.
+      if (!engine.transitioning && engine.index === before) nudgeCard(engine, 'next');
+    };
+    document.addEventListener('keydown', root._ffArrowHandler);
+  }
+
+  // Returns { control } to click for a safe forward move, or { hint } --
+  // the element to highlight when moving forward isn't allowed.
+  function forwardControl(engine) {
+    var card = engine.root.querySelector('.ff-card');
+    if (!card) return {};
+    var navs = card.querySelectorAll('.ff-nav');
+    var nav = navs[navs.length - 1];
+    var primary = nav && nav.querySelector('button.ff-btn-primary');
+    var control = primary || card.querySelector('.ff-option-selected');
+    var step = engine.currentStep();
+    if (!control || control.disabled) {
+      var empty = card.querySelector('.ff-input:required, .ff-textarea:required');
+      var options = card.querySelector('.ff-options');
+      return { hint: (empty && !empty.value.trim() && empty) || (options && !card.querySelector('.ff-option-selected') && options) || primary };
+    }
+    var target;
+    try {
+      target = engine.opts.routeNext ? engine.opts.routeNext(step, engine.answers, engine) : engine.index + 1;
+    } catch (err) { target = null; }
+    if (step.submit || typeof target !== 'number' || target <= engine.index || target >= engine.schema.steps.length) {
+      return { hint: primary };
+    }
+    return { control: control };
+  }
+
+  // Checklist mode: arrows only act inside an item's detail card. Left is
+  // "Back to list"; Right opens the next item once this one is answered
+  // (an unsaved follow-up note must be saved with its button first).
+  function wireChecklistArrows(engine) {
+    var root = engine.root;
+    if (root._ffArrowHandler) document.removeEventListener('keydown', root._ffArrowHandler);
+    root._ffArrowHandler = function (e) {
+      if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+      if (root._ffEngine !== engine || !root.isConnected || !engine.detailStepId || document.querySelector('dialog[open]')) return;
+      if ((engine.opts.appearance || {}).arrowNavigation === false) return;
+      if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+      var active = document.activeElement;
+      if (active && active !== document.body && !root.contains(active)) return;
+      if (active && (active.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName))) return;
+      e.preventDefault();
+      if (e.repeat) return;
+      if (e.key === 'ArrowLeft') { engine.closeDetail(); return; }
+      var card = root.querySelector('.ff-card');
+      var save = card && card.querySelector('.ff-nav .ff-btn-primary');
+      var ids = engine.itemSteps.map(function (s) { return s.id; });
+      var nextId = ids[ids.indexOf(engine.detailStepId) + 1];
+      if (!engine.answers[engine.detailStepId].value) nudgeCard(engine, 'next', card && card.querySelector('.ff-options'));
+      else if (save || !nextId) nudgeCard(engine, 'next', save);
+      else engine.openDetail(nextId);
+    };
+    document.addEventListener('keydown', root._ffArrowHandler);
+  }
+
+  function nudgeCard(engine, direction, hint) {
+    var card = engine.root.querySelector('.ff-card');
+    if (hint) {
+      hint.classList.remove('ff-nudge-hint');
+      void hint.offsetWidth; // restart the highlight on repeated presses
+      hint.classList.add('ff-nudge-hint');
+      window.setTimeout(function () { hint.classList.remove('ff-nudge-hint'); }, 900);
+      if (/^(INPUT|TEXTAREA)$/.test(hint.tagName)) hint.focus({ preventScroll: true });
+    }
+    if (!card || !card.animate || (engine.opts.appearance || {}).motion === 'none' ||
+      matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    // A damped "no" shake, leaning toward the direction that was refused.
+    var s = direction === 'back' ? -1 : 1;
+    card.animate([
+      { transform: 'translateX(0)' },
+      { transform: 'translateX(' + 10 * s + 'px)', offset: 0.25 },
+      { transform: 'translateX(' + -6 * s + 'px)', offset: 0.5 },
+      { transform: 'translateX(' + 3 * s + 'px)', offset: 0.75 },
+      { transform: 'translateX(0)' },
+    ], { duration: 380, easing: 'cubic-bezier(.22, 1, .36, 1)' });
   }
 
   // A per-option `followUp` wins; otherwise fall back to the older
@@ -874,8 +994,11 @@
         this.answers[step.id] = { entries: (step.initialEntries || []).slice() };
       }
     }, this);
-    wireOptionNumberShortcuts(this.root);
+    this.root._ffEngine = this;
+    var self = this;
+    wireOptionNumberShortcuts(this.root, function () { return self.opts.appearance; });
     wireSwipeNavigation(this);
+    wireArrowNavigation(this);
     this.render();
   }
 
@@ -1119,6 +1242,8 @@
     this.entries = {}; // repeat-group state, keyed by step id
     this.detailStepId = null;
     applyAppearance(this.opts.appearance || {}, document.documentElement);
+    root._ffEngine = this; // retires any linear-engine arrow handler on this root
+    wireChecklistArrows(this);
 
     this.itemSteps = (schema.steps || []).filter(function (s) { return s.type === 'choice'; });
     this.leadingInfo = (schema.steps || []).find(function (s) { return s.type === 'info'; });
@@ -1131,7 +1256,8 @@
       this.entries[step.id] = (step.initialEntries || []).slice();
     }, this);
 
-    wireOptionNumberShortcuts(this.root);
+    var self = this;
+    wireOptionNumberShortcuts(this.root, function () { return self.opts.appearance; });
     this.render();
   }
 

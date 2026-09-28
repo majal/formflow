@@ -155,8 +155,19 @@ enabled/disabled state always tracks current validity.
 
 ### Keyboard shortcuts (desktop)
 
-Arrow Up/Down move focus through a question's choices (wrapping); Enter or
+Arrow Up/Down move focus through a question's choices, wrapping from the
+last back to the first (`appearance.choiceWrap: false` stops at the ends); Enter or
 Space picks the focused choice. Number keys 1-9 pick directly.
+
+Arrow **Left/Right** act as Back/Continue in linear flows. Right only moves
+to a later step that's already allowed: a required answer must be given
+first, and it never submits a `submit: true` step, finishes the flow, or
+follows a `routeNext` that loops backward -- those need the real button.
+A refused move gives a short sideways head-shake (skipped under reduced
+motion) and a ring on what's missing. Opt out with
+`appearance.arrowNavigation: false`.
+In checklist mode the arrows act inside an item's card: Left returns to the
+list, Right opens the next item once the current one is answered.
 
 Press **1–9** to pick that numbered option in the currently-visible
 choice step — no reaching for a mouse. Shown as a small badge next to
@@ -197,6 +208,8 @@ Formflow.mount(document.getElementById("app"), schema, {
     motion: "gentle",             // gentle | none
     questionTyping: true,          // fade question letters in sequentially
     swipeNavigation: false,        // vertical swipes; up accepts the focused choice
+    arrowNavigation: true,         // Left/Right arrows act as Back/Continue
+    choiceWrap: true,              // Up/Down wraps between last and first choice
   },
   onComplete: (answers) => save(answers),
 });
@@ -228,7 +241,7 @@ step index or `null` to finish; `beforeRender(engine)` for derived question
 properties; and `onRender(engine, card)` for adjacent controls. Back follows
 visited steps, including branches. `onBack(answers)` handles Back on the first
 step when the host has an earlier screen. Set `submit: true` on a final step
-to prevent a reading swipe from submitting it. Text drafts remain in memory.
+to prevent a reading swipe or Right arrow from submitting it. Text drafts remain in memory.
 Auto-advancing choices still show Back, and numeric-key handlers replace prior
 handlers on a remounted root. Dialogs and editable fields keep their keys.
 
